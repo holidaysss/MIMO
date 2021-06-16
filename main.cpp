@@ -1145,18 +1145,53 @@ auto detection_datapath(COMPLEX input[256][64][192]) {
 	}
 
 	if (obj_detectMethod == 1) {
+		// [N_obj, Ind_obj] = CFAR_CASO_Doppler_overlap(obj, Ind_obj_Rag, input, sig_integrate);
 		CFAR_CASO_Range_2D(sig_integrate_1, &N_obj_Rag, Ind_obj_Rag, noise_obj, CFAR_SNR);
 		//for (int i = 0; i < 211; i++) {
 		//	printf("index:%d CFAR_SNR: %.5lf\n", i + 1, CFAR_SNR[i]);
 		//}
 		//scanf("end");
-		int N_obj = 0, N_pul = 64;
+		int N_obj = 0, N_pul = 64, indx1R, indx1D, indR_num, indD_num;
+		int(*ind2R) = (int*)malloc(sizeof(int) * 211);  /* cout取211 */
+		int ind2D, noiseInd;
+		double(*noise_obj_agg) = (double(*))malloc(sizeof(double) * N_obj);
 		if (N_obj_Rag > 0) {
 			//[N_obj, Ind_obj] = CFAR_CASO_Doppler_overlap(obj, Ind_obj_Rag, input, sig_integrate);
 			int(*Ind_obj)[2] = (int(*)[2])malloc(N_pul * 211 * 2 * sizeof(int)); //注意内存分配
 			CFAR_CASO_Doppler_overlap(Ind_obj, &N_obj, Ind_obj_Rag, input, sig_integrate_1);
+
+			for (int i_obj = 0; i_obj < N_obj; i_obj++) {
+				indx1R = Ind_obj_Rag[i_obj][0];
+				indx1D = Ind_obj_Rag[i_obj][1];
+				indR_num = 0, indD_num = 0;  // reset
+				// ind2R = find(Ind_obj_Rag(:,1) == indx1R)
+				// ind2D = find(Ind_obj_Rag(ind2R, 2) == indx1D)
+				for (int j = 0; j < 211; j++) {
+					if (Ind_obj_Rag[j][0] == indx1R) {
+						ind2R[indR_num++] = j;
+					}
+					
+				}
+				for (int j = 0; j < indR_num; j++) {
+					if (Ind_obj_Rag[ind2R[j]][1] == indx1D) {
+						ind2D = j;
+						break;
+					}
+				}
+				// noiseInd = ind2R(ind2D)
+				noiseInd = ind2R[ind2D];
+				// noise_obj_agg(i_obj) = noise_obj(noiseInd)
+				noise_obj_agg[i_obj] = noise_obj[noiseInd];
+			}
+
+
 		}
+
 		printf("N_obj:%d", N_obj);
+		free(ind2R);
+		free(noise_obj_agg);
+		noise_obj_agg = NULL;
+		ind2R = NULL;
 	}
 	free(Ind_obj_Rag);
 	free(sig_integrate_1);
