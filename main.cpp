@@ -12,8 +12,24 @@
 typedef struct complex {  /*定义复数结构体*/
 	double re;
 	double im;
-}COMPLEX;
+}COMPLEX, Complex;
 
+
+typedef struct detectionResult {
+	int rangeInd;
+	double range;
+	int dopplerInd_org;
+	int dopplerInd;
+	double doppler;
+	double doppler_corr;
+	double doppler_corr_overlap;
+	double doppler_corr_FFT;
+	double overlapTests;
+	double overlapTestsVal;
+	double noise_var;
+	COMPLEX *bin_val;
+	double estSNR;
+}Detection, DR;
 
 typedef struct calibResult1 {
 	double AngleMateMat[16][12];
@@ -472,7 +488,7 @@ void fftshift_2(COMPLEX input[][64], COMPLEX out[][64]) {
 }
 
 
-void DopplerProcClutterRemove_datapath(COMPLEX input[256][64][16], COMPLEX out[][64][16]) {
+void dopplerProcClutterRemove_datapath(COMPLEX input[256][64][16], COMPLEX out[][64][16]) {
 	int numLines = 256, numAnt = 16;
 	double enable = 1, clutterRemove = 0, dopplerFFTSize = 64, FFTOutScaleOn = 0, scaleFactorDoppler = 0.0625; /*obj属性*/
 	COMPLEX(*inputMat)[64] = (COMPLEX(*)[64])malloc(sizeof(COMPLEX) * 256 * 64);
@@ -1020,7 +1036,7 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 	double min_sig, temp_sig, mean_sig=0, obj_powerThre = 0;
 	int obj_numAntenna = 192;
 	int(*cellInd_1) = (int*)malloc(cellNum * 2 * sizeof(int));  /*cellNum:4->8*/
-	double(*noise_obj_an)[143] = (double(*)[143])malloc(192 * 143 * sizeof(double));  /* n_obj:143 */
+	double(*noise_obj_an)[143] = (double(*)[143])malloc(192 * index_Ind_obj * sizeof(double));  /* index_Ind_obj:143 */
 	int(*Ind_obj_valid)[2] = (int(*)[2])malloc(143 * 2 * sizeof(int));  /*cellnum:4->8*/
 
 	for (int i_obj = 0; i_obj < *N_obj; i_obj++) {
@@ -1106,6 +1122,8 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 	free(ind_obj_00);
 	free(cellInd_1);
 	free(Ind_obj_valid);
+	free(noise_obj_an);
+	noise_obj_an = NULL;
 	Ind_obj_valid = NULL;
 	cellInd_1 = NULL;
 	ind_loc_all = NULL;
@@ -1120,15 +1138,18 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 }
 
 
-auto detection_datapath(COMPLEX input[256][64][192]) {
+void detection_datapath(detectionResult detection_results[], COMPLEX input[256][64][192]) {
 	//参数区
 	double sig_integrate, abs_input;
 	double const angleFFTSize = 128, angleBinSkipLeft = 4, angleBinSkipRight = 4;
-	double obj_detectMethod = 1;
+	double  obj_rangeBinSize = 0.1465, obj_velocityBinSize = 0.1256;
+	int obj_dopplerFFTSize = 64, obj_detectMethod = 1, obj_numAntenna = 192, obj_applyVmaxExtend = 0,
+		obj_minDisApplyVmaxExtend = 10, obj_TDM_MIMO_numTX = 12, obj_numRxAnt=16;
+	int not_empty_obj_overlapAntenna_ID = 1;
 	double(*sig_integrate_1)[64] = (double(*)[64])malloc(sizeof(double) * 256 * 64); /*左右补数据*/
 	/*CFAR_CASO_Range_2D的结果*/
 	int N_obj_Rag;
-	int(*Ind_obj_Rag)[2] = (int(*)[2])malloc(sizeof(int) * 44*226 * 2);  /* cout取211 */
+	int(*Ind_obj_Rag)[2] = (int(*)[2])malloc(sizeof(int) * 44*226 * 2);
 	double(*noise_obj) = (double(*))malloc(sizeof(double) * 211);
 	double(*CFAR_SNR) = (double(*))malloc(sizeof(double) * 211);
 
@@ -1154,15 +1175,16 @@ auto detection_datapath(COMPLEX input[256][64][192]) {
 		int N_obj = 0, N_pul = 64, indx1R, indx1D, indR_num, indD_num;
 		int(*ind2R) = (int*)malloc(sizeof(int) * 211);  /* cout取211 */
 		int ind2D, noiseInd;
-		double(*noise_obj_agg) = (double(*))malloc(sizeof(double) * N_obj);
+		double deltaPhi;
 		if (N_obj_Rag > 0) {
 			//[N_obj, Ind_obj] = CFAR_CASO_Doppler_overlap(obj, Ind_obj_Rag, input, sig_integrate);
 			int(*Ind_obj)[2] = (int(*)[2])malloc(N_pul * 211 * 2 * sizeof(int)); //注意内存分配
 			CFAR_CASO_Doppler_overlap(Ind_obj, &N_obj, Ind_obj_Rag, input, sig_integrate_1);
+			double(*noise_obj_agg) = (double(*))malloc(sizeof(double) * N_obj);
 
 			for (int i_obj = 0; i_obj < N_obj; i_obj++) {
-				indx1R = Ind_obj_Rag[i_obj][0];
-				indx1D = Ind_obj_Rag[i_obj][1];
+				indx1R = Ind_obj[i_obj][0];
+				indx1D = Ind_obj[i_obj][1];
 				indR_num = 0, indD_num = 0;  // reset
 				// ind2R = find(Ind_obj_Rag(:,1) == indx1R)
 				// ind2D = find(Ind_obj_Rag(ind2R, 2) == indx1D)
@@ -1183,14 +1205,89 @@ auto detection_datapath(COMPLEX input[256][64][192]) {
 				// noise_obj_agg(i_obj) = noise_obj(noiseInd)
 				noise_obj_agg[i_obj] = noise_obj[noiseInd];
 			}
+			int xind, dopplerInd, i_sig_bin;
+			double bin_val_sum=0;
+			//detectionResult(*detection_results) = (detectionResult(*))malloc(sizeof(detectionResult) * N_obj);
+			int(*RX_ID) = (int(*))malloc(sizeof(int) * obj_numRxAnt);
+			COMPLEX(*sig_bin) = (COMPLEX(*))malloc(sizeof(COMPLEX) * obj_TDM_MIMO_numTX * obj_numRxAnt);
+			COMPLEX(**bin_val_1) = (COMPLEX**)malloc(sizeof(COMPLEX*) * N_obj);
+			for (int i = 0; i < N_obj; i++) {
+				bin_val_1[i] = (COMPLEX*)malloc(sizeof(COMPLEX) * obj_TDM_MIMO_numTX * obj_numRxAnt);
+			}
+			for (int i_obj = 0; i_obj < N_obj;i_obj++) {
+				xind = (Ind_obj[i_obj][0] - 1) + 1;
+				detection_results[i_obj].rangeInd = Ind_obj[i_obj][0] - 1;
+				detection_results[i_obj].range = detection_results[i_obj].rangeInd * obj_rangeBinSize;
+				dopplerInd = Ind_obj[i_obj][1] - 1;
+				detection_results[i_obj].dopplerInd_org = dopplerInd;
+				detection_results[i_obj].dopplerInd = dopplerInd;
+				/* velocity estimation */
+				detection_results[i_obj].doppler = (double(dopplerInd) - obj_dopplerFFTSize / 2) * obj_velocityBinSize;// something wrong in Matlab
+				detection_results[i_obj].doppler_corr = detection_results[i_obj].doppler;
+				detection_results[i_obj].noise_var = noise_obj_agg[i_obj];
+				detection_results[i_obj].bin_val = bin_val_1[i_obj];  //指向动态数组
+				for (int i = 0; i < obj_numAntenna; i++) {
+					detection_results[i_obj].bin_val[i]=input[xind-1][Ind_obj[i_obj][1]-1][i];  // index-1
+					bin_val_sum += (pow(detection_results[i_obj].bin_val[i].im, 2) + pow(detection_results[i_obj].bin_val[i].re, 2));
+				}
+				//for (int i = 0; i < obj_numAntenna; i++) {
+				//	printf("%d %.5lf + %.5lf i\n",i+1, detection_results[i_obj].bin_val[i].re, detection_results[i_obj].bin_val[i].im);
+				//}
+				//scanf("end");
+				//sum(abs(detection_results (i_obj).bin_val).^2)/sum(detection_results (i_obj).noise_var)
+				detection_results[i_obj].estSNR = bin_val_sum / detection_results[i_obj].noise_var; /*bug*/
+				bin_val_sum = 0;  //reset
+				if (obj_applyVmaxExtend == 1 && (detection_results[i_obj].range > obj_minDisApplyVmaxExtend) && not_empty_obj_overlapAntenna_ID) {
+					continue;
+					//skip, because obj_applyVmaxExtend is 0
+				}
+				else {
+					/* Doppler phase correction due to TDM MIMO without apply */
+					/* Vmax extention algorithm */
+					deltaPhi = 2 * PI * (double(dopplerInd) - obj_dopplerFFTSize / 2) / (double(obj_TDM_MIMO_numTX) * obj_dopplerFFTSize);
+					i_sig_bin=0;
+					for (int i_TX = 0; i_TX < obj_TDM_MIMO_numTX; i_TX++) {
+						// RX_ID = (i_TX-1)*obj.numRxAnt+1 : i_TX*obj.numRxAnt
+						// sig_bin(RX_ID,: )= sig_bin_org(RX_ID )* exp(-1j*(i_TX-1)*deltaPhi)
+						for (int j = 0; j < obj_numRxAnt; j++, i_sig_bin++) {
+							RX_ID[j] = i_TX * obj_numRxAnt + j;
+							/* (i+r)*(i+r) = (rr-ii)+(ir+ri)j */
+							/* exp(-i_TX j * deltaPhi) = cos(i_TX*deltaPhi)-sin(i_TX*deltaPhi)j */
+							sig_bin[i_sig_bin].im = detection_results[i_obj].bin_val[RX_ID[j]].im * cos(i_TX * deltaPhi)
+								- detection_results[i_obj].bin_val[RX_ID[j]].re * sin(i_TX * deltaPhi);
+							sig_bin[i_sig_bin].re = detection_results[i_obj].bin_val[RX_ID[j]].re * cos(i_TX * deltaPhi)
+								+ detection_results[i_obj].bin_val[RX_ID[j]].im * sin(i_TX * deltaPhi);
 
-
+							detection_results[i_obj].bin_val[i_sig_bin] = sig_bin[i_sig_bin];
+						}
+					}
+					//for (int i = 0; i < obj_numAntenna; i++) {
+					//	printf("%d %.5lf + %.5lf i\n", i+1, sig_bin[i].re, sig_bin[i].im);
+					//}
+					//scanf("end");
+					//detection_results[i_obj].bin_val = sig_bin;
+					detection_results[i_obj].doppler_corr_overlap = detection_results[i_obj].doppler_corr;
+					detection_results[i_obj].doppler_corr_FFT = detection_results[i_obj].doppler_corr;
+				}
+			}
+			//for (int i = 0; i < 192; i++) {
+			//	//printf("index:%d %d %.5lf %.5lf\n", i + 1, detection_results[i].dopplerInd, detection_results[i].doppler, detection_results[i].estSNR);
+			//	printf("i: %d  %.5lf + %.5lf i\n", i+1, detection_results[2].bin_val[i].re, detection_results[2].bin_val[i].im);
+			//}
+			//scanf("end");
+			free(RX_ID);
+			free(sig_bin);
+			free(Ind_obj);
+			free(bin_val_1);
+			free(noise_obj_agg);
+			noise_obj_agg = NULL;
+			bin_val_1 = NULL;
+			Ind_obj = NULL;
+			sig_bin = NULL;
+			RX_ID = NULL;
 		}
-
 		printf("N_obj:%d", N_obj);
 		free(ind2R);
-		free(noise_obj_agg);
-		noise_obj_agg = NULL;
 		ind2R = NULL;
 	}
 	free(Ind_obj_Rag);
@@ -1203,6 +1300,36 @@ auto detection_datapath(COMPLEX input[256][64][192]) {
 	sig_integrate_1 = NULL;
 }
 
+
+void DOA_path(detectionResult detected_obj[], detectionResult out[]) {
+	out = detected_obj;
+	int numAoAObjCnt = 0, obj_method = 1;
+	double estSNR, sum=0;
+	detectionResult current_obj;
+	COMPLEX(*X)= (COMPLEX(*))malloc(sizeof(COMPLEX) * 192);
+	COMPLEX(*R)[192] = (COMPLEX(*)[192])malloc(sizeof(COMPLEX) * 192 * 192);
+	for (int i_obj = 0; i_obj < 143; i_obj++) {
+		current_obj = detected_obj[i_obj];
+		// estSNR = 10*log10(sum(abs(current_obj.bin_val).^2)/sum(current_obj.noise_var));
+		for (int i = 0; i < 192; i++) {
+			sum += (pow(current_obj.bin_val[i].im, 2) + pow(current_obj.bin_val[i].re, 2));
+		}
+		estSNR = 10 * log10(sum / current_obj.noise_var);
+		X = current_obj.bin_val;
+		//R = X*X'
+		for (int i = 0; i < 192; i++) {
+			for (int j = 0; j < 192; j++) {
+				R[i][j].re = X[i].re * X[j].re - X[i].im * X[j].im;
+				R[i][j].im = X[i].re * X[j].im + X[i].im * X[j].re;
+
+			}
+		}
+	}
+	free(X);
+	free(R);
+	R = NULL;
+	X = NULL;
+}
 
 
 int main() {
@@ -1276,7 +1403,7 @@ int main() {
 				}
 			}
 		}
-		DopplerProcClutterRemove_datapath(rangeFFTOut_slice, DopplerFFTOut_slice);  //地址传参
+		dopplerProcClutterRemove_datapath(rangeFFTOut_slice, DopplerFFTOut_slice);  //地址传参
 		//DopplerFFTOut聚合
 		for (int i = 0; i < 256; i++) {
 			for (int j = 0; j < 64; j++) {
@@ -1342,7 +1469,24 @@ int main() {
 	writetxt_2d(sig_integrate_LOG, 241, "result/sig_integrate_LOG.txt");
 
 	//CFAR检测，检测基于192个通道求和数据，数据经过了多普勒维相干积累和多通道非相干积累
-	detection_datapath(DopplerFFTOut);
+	detectionResult(*detection_results) = (detectionResult(*))malloc(sizeof(detectionResult) * 143);
+	detection_datapath(detection_results, DopplerFFTOut);
+	//for (int i = 0; i < 143; i++) {
+	//	printf("index:%d %d %.5lf %.5lf\n", i + 1, detection_results[i].dopplerInd, detection_results[i].doppler, detection_results[i].estSNR);
+	//	//printf("i: %d  %.5lf + %.5lf i\n", i+1, detection_results[2].bin_val[i].re, detection_results[2].bin_val[i].im);
+	//}
+	//scanf("end");
+	double(*detect_all_points)[4] = (double(*)[4])malloc(sizeof(double) * 143 * 4);
+	for (int iobj = 0; iobj < 143; iobj++) {
+		detect_all_points[iobj][0] = detection_results[iobj].rangeInd + 1;
+		detect_all_points[iobj][1] = detection_results[iobj].dopplerInd_org + 1;
+		detect_all_points[iobj][3] = detection_results[iobj].estSNR;
+	}
+	//is detection_results empty?
+	detectionResult(*angleEst) = (detectionResult(*))malloc(sizeof(detectionResult) * 143);
+	DOA_path(detection_results, angleEst);
+
+	free(detection_results);
 	free(adcData);
 	free(adcData_slice);
 	free(rangeFFTOut);
@@ -1351,6 +1495,15 @@ int main() {
 	free(sig_integrate_LOG);
 	free(rangeFFTOut_slice);
 	free(DopplerFFTOut_slice);
+	detection_results = NULL;
+	adcData = NULL;
+	adcData_slice = NULL;
+	rangeFFTOut = NULL;
+	DopplerFFTOut_pre = NULL;
+	sig_integrate = NULL;
+	sig_integrate_LOG = NULL;
+	rangeFFTOut_slice = NULL;
+	DopplerFFTOut_slice = NULL;
 	return 0;
 }
 
