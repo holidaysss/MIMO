@@ -488,6 +488,17 @@ void fftshift_2(COMPLEX input[][64], COMPLEX out[][64]) {
 }
 
 
+void fftshift_2_1(COMPLEX input[][86], COMPLEX out[][86]) {
+	int k = 0;
+	for (int i = 0; i < 7; i++) {
+		for (int j = 0; j < 86; j++) {
+			k = (j + 43) % 86;
+			out[i][j] = input[i][k];
+		}
+	}
+}
+
+
 void dopplerProcClutterRemove_datapath(COMPLEX input[256][64][16], COMPLEX out[][64][16]) {
 	int numLines = 256, numAnt = 16;
 	double enable = 1, clutterRemove = 0, dopplerFFTSize = 64, FFTOutScaleOn = 0, scaleFactorDoppler = 0.0625; /*obj属性*/
@@ -505,11 +516,6 @@ void dopplerProcClutterRemove_datapath(COMPLEX input[256][64][16], COMPLEX out[]
 					inputMat[i][j] = input[i][j][i_an];
 				}
 			}
-			//for (int i = 53; i < 64; i++) {
-			//	printf("input%d:%.5lf + %.5lf\n",i_an, input[255][i][i_an].re, input[255][i][i_an].im);
-			//}
-			//scanf("end");
-
 			//inputMat = bsxfun(@times, inputMat, obj.dopplerWindowCoeffVec.')
 			double dopplerWindowCoeffVec[64];
 			for (int i = 0; i < 64; i++) {
@@ -522,11 +528,6 @@ void dopplerProcClutterRemove_datapath(COMPLEX input[256][64][16], COMPLEX out[]
 					inputMat_t[j][i] = inputMat[i][j]; /*inputMat矩阵的转置:64-256*/
 				}
 			}
-			//for (int i = 53; i < 64; i++) {
-			//	printf("inputMat%d:%.5lf + %.5lf\n", i_an, inputMat[255][i].re, inputMat[255][i].im);
-			//}
-			//scanf("end");
-
 			if (clutterRemove == 1) {
 				//inputMat = inputMat - (repmat(mean(inputMat'),size(inputMat,2),1))'
 			}
@@ -538,7 +539,7 @@ void dopplerProcClutterRemove_datapath(COMPLEX input[256][64][16], COMPLEX out[]
 					pi[k] = inputMat_t[i][j].im;
 					k++;
 				}
-				kfft(pr, pi, 64, 6, fr, fi);
+				kfft(pr, pi, 64, 6, fr, fi);  //pr,pi -> input ; fr,fi -> output ; 采样点数 64=2~6
 				k = 0;
 				for (int i = 0; i < 64; i++) {
 					fftOutput[j][i].re = fr[k];
@@ -546,13 +547,7 @@ void dopplerProcClutterRemove_datapath(COMPLEX input[256][64][16], COMPLEX out[]
 					k++;
 				}
 			}
-			//for (int i = 53; i < 64; i++) {
-			//	printf("fftOutput%d:%.5lf + %.5lf\n", i_an, fftOutput[255][i].re, fftOutput[255][i].im);
-			//}
-			//scanf("end");
-
 			//fftshift
-
 			fftshift_2(fftOutput, fftOutput1); /*左右行互换*/
 			if (FFTOutScaleOn == 1) {
 				for (int i = 0; i < 256; i++) {
@@ -562,23 +557,12 @@ void dopplerProcClutterRemove_datapath(COMPLEX input[256][64][16], COMPLEX out[]
 					}
 				}
 			}
-			//for (int i = 53; i < 64; i++) {
-			//	printf("fftOutput_shift%d:%.5lf + %.5lf\n",i_an, fftOutput[255][i].re, fftOutput[255][i].im);
-			//}
-			//scanf("end");
-
 			//out(:,:,i_an) = fftOutput
 			for (int j = 0; j < 256; j++) {
 				for (int i = 0; i < 64; i++) {
 					out[j][i][i_an] = fftOutput1[j][i];
 				}
 			}
-			//if (i_an == 1) {
-			//	for (int i = 53; i < 64; i++) {
-			//		printf("fftOutput``:%.5lf + %.5lf\n", fftOutput[255][i].re, fftOutput[255][i].im);
-			//	}
-			//	scanf("end");
-			//}		
 		}
 	}
 	else
@@ -1286,7 +1270,6 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 			sig_bin = NULL;
 			RX_ID = NULL;
 		}
-		printf("N_obj:%d", N_obj);
 		free(ind2R);
 		ind2R = NULL;
 	}
@@ -1301,27 +1284,176 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 }
 
 
+void DOA_beamformingFFT_2D(COMPLEX *sig) {
+	int angles_DOA_az[2] = { -80, 80 }, angles_DOA_ele[2] = { -20, 20 };
+	double d = 0.5046;
+	int angleFFTSize = 256, apertureLen_azim, apertureLen_elev;
+	int(*D)[2] = (int(*)[2])malloc(sizeof(int) * 192 * 2);  //怎么生成D？
+	int D1[192] = { 0,1,2,3,11,12,13,14,46,47,48,49,50,51,52,53,4,5,6,7,15,16,17,18,50,51,52,53,54,55,56,57,8,9,10,11,19,20,21,22,54,55,56,57,58,59,60,61,12,13,14,15,23,24,25,26,58,59,60,61,62,63,64,65,16,17,18,19,27,28,29,30,62,63,64,65,66,67,68,69,20,21,22,23,31,32,33,34,66,67,68,69,70,71,72,73,24,25,26,27,35,36,37,38,70,71,72,73,74,75,76,77,28,29,30,31,39,40,41,42,74,75,76,77,78,79,80,81,32,33,34,35,43,44,45,46,78,79,80,81,82,83,84,85,9,10,11,12,20,21,22,23,55,56,57,58,59,60,61,62,10,11,12,13,21,22,23,24,56,57,58,59,60,61,62,63,11,12,13,14,22,23,24,25,57,58,59,60,61,62,63,64 };
+	
+	COMPLEX(*sig_sel) = (COMPLEX*)malloc(sizeof(COMPLEX) * 192);
+	COMPLEX(*sig_2D)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 86 * 7);
+	COMPLEX(*fftOutput)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 256 * 7);
+	COMPLEX(*fftOutput1)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 256 * 7);
+
+	for (int i = 0; i < 144; i++) {
+		D[i][1] = 0 + 1;
+	}
+	for (int i = 0; i < 16; i++) {
+		D[i + 144][1] = 1 + 1;
+		D[i + 144 + 16][1] = 4 + 1;
+		D[i + 144 + 32][1] = 6 + 1;
+	}
+	for (int i = 0; i < 192; i++) {
+		D[i][0] = D1[i] + 1;
+	}
+	//apertureLen_azim = max(D(:,1))
+	apertureLen_azim = D[0][0];
+	for (int i = 1; i < 192; i++) {
+		if (D[i][0] > apertureLen_azim) {
+			apertureLen_azim = D[i][0];
+		}
+	}
+	//apertureLen_elev = max(D(:,2))
+	apertureLen_elev = D[0][1];
+	for (int i = 1; i < 192; i++) {
+		if (D[i][1] > apertureLen_elev) {
+			apertureLen_elev = D[i][1];
+		}
+	}
+	int ind_num = 0, indU_num=1, flag=1, temp, change_flag=0;
+	for (int i_line = 0; i_line < apertureLen_elev; i_line++) {
+		//初始化
+		int(*ind) = (int*)malloc(sizeof(int) * 192);
+		int(*indU) = (int*)malloc(sizeof(int) * 192);
+		int(*val) = (int*)malloc(sizeof(int) * 192);
+		int(*D_sel) = (int*)malloc(sizeof(int) * 192);
+		indU_num = 1, ind_num = 0;
+		// ind = find(D(:,2) == i_line);
+		for (int j = 0; j < 192; j++) {
+			if (D[j][1] == i_line+1) {  //i_line+1, 起始值+1
+				ind[ind_num++] = j;
+			}
+		}
+		// D_sel = D(ind,1)
+		for (int j = 0; j < ind_num; j++) {
+			D_sel[j] = D[ind[j]][0];
+			sig_sel[j] = sig[ind[j]];
+		}
+		// [val indU] = unique(D_sel), 取独, then排序
+		indU[0] = 1;
+		val[0] = D_sel[0];  /*初值*/
+		for (int j = 0; j < ind_num; j++) {
+			flag = 1;
+			for (int t = 0; t < indU_num; t++) {
+				if (val[t] == D_sel[j]) {
+					flag = 0;  //已有值
+					break;
+				}
+			}
+			if (flag == 1) {  //新值
+				indU[indU_num] = j;
+				val[indU_num++] = D_sel[j];
+			}
+		}
+		//冒泡排序
+		while (change_flag == 0) {
+			change_flag = 1;
+			for (int i = 0; i < indU_num - 1; i++) {
+				if (val[i] > val[i + 1]) { //exchange
+					temp = val[i];
+					val[i] = val[i + 1];
+					val[i + 1] = temp;
+					temp = indU[i];
+					indU[i] = indU[i + 1];
+					indU[i + 1] = temp;
+					change_flag = 0;
+				}
+			}
+		}
+		//  sig_2D(D_sel(indU),i_line) = sig_sel(indU)
+		for (int j = 0; j < 86; j++) {  /* 初始化sig_2D */
+			sig_2D[j][i_line].im = 0;
+			sig_2D[j][i_line].re = 0;
+		}
+		if (ind_num > 0) {
+			for (int j = 0; j < indU_num; j++) {
+				sig_2D[D_sel[indU[j]] - 1][i_line] = sig_sel[indU[j]];
+			}
+		}
+		//angle_sepc_1D_fft=fftshift(fft(sig_2D,angleFFTSize,1),1)
+		double pr[86], pi[86], fr[86], fi[86];
+		for (int j = 0; j < 7; j++) {
+			for (int i = 0; i < 86; i++) {
+				pr[i] = sig_2D[i][j].re;
+				pi[i] = sig_2D[i][j].im;
+			}
+			//对每列进行fft
+			kfft(pr, pi, 86, 8, fr, fi);  // pr,pi -> input ; fr,fi -> output ; 采样点数 256=2~8
+			for (int i = 0; i < 256; i++) {  // 86->256
+				fftOutput[j][i].re = fr[i];
+				fftOutput[j][i].im = fi[i];
+			}
+		}
+
+		//angle_sepc_2D_fft=fftshift(fft(angle_sepc_1D_fft,angleFFTSize,2),2); 
+		free(D_sel);
+		free(ind);
+		free(indU);
+		free(val);
+		val = NULL;
+		indU = NULL;
+		ind = NULL;
+		D_sel = NULL;
+	}
+	//for (int i = 0; i < 86; i++) {
+	//	printf("%d  re: %.5lf, im: %.5lf\n", i+1, sig_2D[i][2].re, sig_2D[i][2].im);
+	//}
+	//scanf("end");
+
+	free(D);
+	free(sig_sel);
+	free(fftOutput);
+	free(fftOutput1);
+	fftOutput1 = NULL;
+	fftOutput = NULL;
+	sig_sel = NULL;
+	D = NULL;
+}
+
+
 void DOA_path(detectionResult detected_obj[], detectionResult out[]) {
 	out = detected_obj;
 	int numAoAObjCnt = 0, obj_method = 1;
 	double estSNR, sum=0;
 	detectionResult current_obj;
-	COMPLEX(*X)= (COMPLEX(*))malloc(sizeof(COMPLEX) * 192);
+	COMPLEX(*X)= (COMPLEX*)malloc(sizeof(COMPLEX) * 192);
 	COMPLEX(*R)[192] = (COMPLEX(*)[192])malloc(sizeof(COMPLEX) * 192 * 192);
-	for (int i_obj = 0; i_obj < 143; i_obj++) {
-		current_obj = detected_obj[i_obj];
-		// estSNR = 10*log10(sum(abs(current_obj.bin_val).^2)/sum(current_obj.noise_var));
-		for (int i = 0; i < 192; i++) {
-			sum += (pow(current_obj.bin_val[i].im, 2) + pow(current_obj.bin_val[i].re, 2));
-		}
-		estSNR = 10 * log10(sum / current_obj.noise_var);
-		X = current_obj.bin_val;
-		//R = X*X'
-		for (int i = 0; i < 192; i++) {
-			for (int j = 0; j < 192; j++) {
-				R[i][j].re = X[i].re * X[j].re - X[i].im * X[j].im;
-				R[i][j].im = X[i].re * X[j].im + X[i].im * X[j].re;
-
+	if (X != NULL && R != NULL) {
+		for (int i_obj = 0; i_obj < 143; i_obj++) {
+			current_obj = detected_obj[i_obj];
+			// estSNR = 10*log10(sum(abs(current_obj.bin_val).^2)/sum(current_obj.noise_var));
+			for (int i = 0; i < 192; i++) {
+				sum += (pow(current_obj.bin_val[i].im, 2) + pow(current_obj.bin_val[i].re, 2));
+			}
+			estSNR = 10 * log10(sum / current_obj.noise_var);
+			X = current_obj.bin_val;
+			//R = X*X'
+			for (int i = 0; i < 192; i++) {
+				for (int j = 0; j < 192; j++) {
+					R[i][j].re = X[i].re * X[j].re + X[i].im * X[j].im;  // X'的虚部取反??
+					R[i][j].im = X[i].im * X[j].re - X[i].re * X[j].im;
+					//printf("i%d j%d: %.5lf + %.5lfi\n",i+1, j+1, R[i][j].re, R[i][j].im);
+				}
+			}
+			//scanf("end");
+			switch (obj_method)
+			{
+			case 1:
+				DOA_beamformingFFT_2D(X);
+				break;
+			default:
+				break;
 			}
 		}
 	}
