@@ -477,7 +477,7 @@ void rangeProcCascade_datapath(COMPLEX input[256][64][16], COMPLEX out[][64][16]
 }
 
 
-void fftshift_2(COMPLEX input[][64], COMPLEX out[][64]) {
+void fftshift_2(COMPLEX input[][64], COMPLEX out[][64]) {  //2维 中心对调
 	int k = 0;
 	for (int i = 0; i < 256; i++) {
 		for (int j = 0; j < 64; j++) {
@@ -488,12 +488,20 @@ void fftshift_2(COMPLEX input[][64], COMPLEX out[][64]) {
 }
 
 
-void fftshift_2_1(COMPLEX input[][86], COMPLEX out[][86]) {
+void fftshift_2_1(COMPLEX input[][7], COMPLEX out[][7]) {  //2维 上下对调
 	int k = 0;
-	for (int i = 0; i < 7; i++) {
-		for (int j = 0; j < 86; j++) {
-			k = (j + 43) % 86;
-			out[i][j] = input[i][k];
+	for (int i = 0; i < 256; i++) {
+		for (int j = 0; j < 7; j++) {
+			out[i][j] = input[255-i][j];
+		}
+	}
+}
+
+void fftshift_2_2(COMPLEX input[][256], COMPLEX out[][256]) {  //2维 上下对调
+	int k = 0;
+	for (int i = 0; i < 256; i++) {
+		for (int j = 0; j < 256; j++) {
+			out[i][j] = input[i][255-j];
 		}
 	}
 }
@@ -1294,8 +1302,9 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 	COMPLEX(*sig_sel) = (COMPLEX*)malloc(sizeof(COMPLEX) * 192);
 	COMPLEX(*sig_2D)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 86 * 7);
 	COMPLEX(*fftOutput)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 256 * 7);
-	COMPLEX(*fftOutput1)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 256 * 7);
-
+	COMPLEX(*angle_sepc_1D_fft)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 256 * 7);
+	COMPLEX(*fftOutput1)[256] = (COMPLEX(*)[256])malloc(sizeof(COMPLEX) * 256 * 256);
+	COMPLEX(*angle_sepc_2D_fft)[256] = (COMPLEX(*)[256])malloc(sizeof(COMPLEX) * 256 * 256);
 	for (int i = 0; i < 144; i++) {
 		D[i][1] = 0 + 1;
 	}
@@ -1382,21 +1391,43 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 			}
 		}
 		//angle_sepc_1D_fft=fftshift(fft(sig_2D,angleFFTSize,1),1)
-		double pr[86], pi[86], fr[86], fi[86];
+		double pr[256], pi[256], fr[256], fi[256];
 		for (int j = 0; j < 7; j++) {
 			for (int i = 0; i < 86; i++) {
 				pr[i] = sig_2D[i][j].re;
 				pi[i] = sig_2D[i][j].im;
 			}
-			//对每列进行fft
-			kfft(pr, pi, 86, 8, fr, fi);  // pr,pi -> input ; fr,fi -> output ; 采样点数 256=2~8
-			for (int i = 0; i < 256; i++) {  // 86->256
-				fftOutput[j][i].re = fr[i];
-				fftOutput[j][i].im = fi[i];
+			for (int i = 86; i < 256; i++) {  // 补零 86->256
+				pr[i] = 0;
+				pi[i] = 0;
+			}
+			//每列进行fft
+			kfft(pr, pi, 256, 8, fr, fi);  // pr,pi -> input ; fr,fi -> output ; 采样点数 256=2~8
+			for (int i = 0; i < 256; i++) { 
+				fftOutput[i][j].re = fr[i];
+				fftOutput[i][j].im = fi[i];
+			}
+		}
+		fftshift_2_1(fftOutput, angle_sepc_1D_fft);
+		//angle_sepc_2D_fft=fftshift(fft(angle_sepc_1D_fft,angleFFTSize,2),2); 
+		double pr1[256], pi1[256], fr1[256], fi1[256];
+		for (int j = 0; j < 256; j++) {
+			for (int i = 0; i < 7; i++) {
+				pr1[i] = angle_sepc_1D_fft[j][i].re;
+				pi1[i] = angle_sepc_1D_fft[j][i].im;
+			}
+			for (int i = 7; i < 256; i++) {  // 补零 7->256
+				pr1[i] = 0;
+				pi1[i] = 0;
+			}
+			//每行进行fft
+			kfft(pr1, pr1, 256, 8, fr1, fi1);
+			for (int i = 0; i < 256; i++) {  //
+				fftOutput1[j][i].re = fr1[i];
+				fftOutput1[j][i].im = fi1[i];
 			}
 		}
 
-		//angle_sepc_2D_fft=fftshift(fft(angle_sepc_1D_fft,angleFFTSize,2),2); 
 		free(D_sel);
 		free(ind);
 		free(indU);
@@ -1414,8 +1445,8 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 	free(D);
 	free(sig_sel);
 	free(fftOutput);
-	free(fftOutput1);
-	fftOutput1 = NULL;
+	free(angle_sepc_1D_fft);
+	angle_sepc_1D_fft = NULL;
 	fftOutput = NULL;
 	sig_sel = NULL;
 	D = NULL;
