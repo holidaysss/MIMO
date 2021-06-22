@@ -477,7 +477,7 @@ void rangeProcCascade_datapath(COMPLEX input[256][64][16], COMPLEX out[][64][16]
 }
 
 
-void fftshift_2(COMPLEX input[][64], COMPLEX out[][64]) {  //2维 中心对调
+void fftshift_2(COMPLEX input[][64], COMPLEX out[][64]) {  //2维 左右行对换
 	int k = 0;
 	for (int i = 0; i < 256; i++) {
 		for (int j = 0; j < 64; j++) {
@@ -488,20 +488,22 @@ void fftshift_2(COMPLEX input[][64], COMPLEX out[][64]) {  //2维 中心对调
 }
 
 
-void fftshift_2_1(COMPLEX input[][7], COMPLEX out[][7]) {  //2维 上下对调
+void fftshift_1(COMPLEX input[][7], COMPLEX out[][7]) {  //2维 上下列对换
 	int k = 0;
-	for (int i = 0; i < 256; i++) {
-		for (int j = 0; j < 7; j++) {
-			out[i][j] = input[255-i][j];
+	for (int j = 0; j < 7; j++) {
+		for (int i = 0; i < 256; i++) {
+			k = (i + 128) % 256;
+			out[i][j] = input[k][j];
 		}
 	}
 }
 
-void fftshift_2_2(COMPLEX input[][256], COMPLEX out[][256]) {  //2维 上下对调
+void fftshift_2_1(COMPLEX input[][256], COMPLEX out[][256]) {  //2维 左右行对换
 	int k = 0;
 	for (int i = 0; i < 256; i++) {
 		for (int j = 0; j < 256; j++) {
-			out[i][j] = input[i][255-j];
+			k = (j + 128) % 256;
+			out[i][j] = input[i][k];
 		}
 	}
 }
@@ -547,6 +549,7 @@ void dopplerProcClutterRemove_datapath(COMPLEX input[256][64][16], COMPLEX out[]
 					pi[k] = inputMat_t[i][j].im;
 					k++;
 				}
+				//列fft
 				kfft(pr, pi, 64, 6, fr, fi);  //pr,pi -> input ; fr,fi -> output ; 采样点数 64=2~6
 				k = 0;
 				for (int i = 0; i < 64; i++) {
@@ -1349,8 +1352,9 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 			D_sel[j] = D[ind[j]][0];
 			sig_sel[j] = sig[ind[j]];
 		}
+
 		// [val indU] = unique(D_sel), 取独, then排序
-		indU[0] = 1;
+		indU[0] = 0;
 		val[0] = D_sel[0];  /*初值*/
 		for (int j = 0; j < ind_num; j++) {
 			flag = 1;
@@ -1390,44 +1394,6 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 				sig_2D[D_sel[indU[j]] - 1][i_line] = sig_sel[indU[j]];
 			}
 		}
-		//angle_sepc_1D_fft=fftshift(fft(sig_2D,angleFFTSize,1),1)
-		double pr[256], pi[256], fr[256], fi[256];
-		for (int j = 0; j < 7; j++) {
-			for (int i = 0; i < 86; i++) {
-				pr[i] = sig_2D[i][j].re;
-				pi[i] = sig_2D[i][j].im;
-			}
-			for (int i = 86; i < 256; i++) {  // 补零 86->256
-				pr[i] = 0;
-				pi[i] = 0;
-			}
-			//每列进行fft
-			kfft(pr, pi, 256, 8, fr, fi);  // pr,pi -> input ; fr,fi -> output ; 采样点数 256=2~8
-			for (int i = 0; i < 256; i++) { 
-				fftOutput[i][j].re = fr[i];
-				fftOutput[i][j].im = fi[i];
-			}
-		}
-		fftshift_2_1(fftOutput, angle_sepc_1D_fft);
-		//angle_sepc_2D_fft=fftshift(fft(angle_sepc_1D_fft,angleFFTSize,2),2); 
-		double pr1[256], pi1[256], fr1[256], fi1[256];
-		for (int j = 0; j < 256; j++) {
-			for (int i = 0; i < 7; i++) {
-				pr1[i] = angle_sepc_1D_fft[j][i].re;
-				pi1[i] = angle_sepc_1D_fft[j][i].im;
-			}
-			for (int i = 7; i < 256; i++) {  // 补零 7->256
-				pr1[i] = 0;
-				pi1[i] = 0;
-			}
-			//每行进行fft
-			kfft(pr1, pr1, 256, 8, fr1, fi1);
-			for (int i = 0; i < 256; i++) {  //
-				fftOutput1[j][i].re = fr1[i];
-				fftOutput1[j][i].im = fi1[i];
-			}
-		}
-
 		free(D_sel);
 		free(ind);
 		free(indU);
@@ -1437,6 +1403,52 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 		ind = NULL;
 		D_sel = NULL;
 	}
+	//angle_sepc_1D_fft=fftshift(fft(sig_2D,angleFFTSize,1),1)
+	double pr[256], pi[256], fr[256], fi[256];
+	for (int j = 0; j < 7; j++) {
+		for (int i = 0; i < 86; i++) {
+			pr[i] = sig_2D[i][j].re;
+			pi[i] = sig_2D[i][j].im;
+		}
+		for (int i = 86; i < 256; i++) {  // 补零 86-7 -> 256-7
+			pr[i] = 0;
+			pi[i] = 0;
+		}
+		//每列进行fft
+		kfft(pr, pi, 256, 8, fr, fi);  // pr,pi -> input ; fr,fi -> output ; 采样点数 256=2~8
+		for (int i = 0; i < 256; i++) {
+			fftOutput[i][j].re = fr[i];
+			fftOutput[i][j].im = fi[i];
+		}
+	}
+	fftshift_1(fftOutput, angle_sepc_1D_fft);
+	for (int i = 0; i < 256; i++) {
+		printf("%d  re: %.5lf, im: %.5lf\n", i + 1, angle_sepc_1D_fft[i][0].re, angle_sepc_1D_fft[i][0].im);
+	}
+	scanf("end");
+	//angle_sepc_2D_fft=fftshift(fft(angle_sepc_1D_fft,angleFFTSize,2),2); 
+	double pr1[256], pi1[256], fr1[256], fi1[256];
+	for (int j = 0; j < 256; j++) {
+		for (int i = 0; i < 7; i++) {
+			pr1[i] = angle_sepc_1D_fft[j][i].re;
+			pi1[i] = angle_sepc_1D_fft[j][i].im;
+		}
+		for (int i = 7; i < 256; i++) {  // 补零 7->256
+			pr1[i] = 0;
+			pi1[i] = 0;
+		}
+		//每行进行fft
+		kfft(pr1, pr1, 256, 8, fr1, fi1);
+		for (int i = 0; i < 256; i++) {  //
+			fftOutput1[j][i].re = fr1[i];
+			fftOutput1[j][i].im = fi1[i];
+		}
+	}
+	fftshift_2_1(fftOutput1, angle_sepc_2D_fft);
+	for (int i = 0; i < 256; i++) {
+		printf("%d  re: %.5lf, im: %.5lf\n", i + 1, angle_sepc_2D_fft[i][0].re, angle_sepc_2D_fft[i][0].im);
+	}
+	scanf("end");
 	//for (int i = 0; i < 86; i++) {
 	//	printf("%d  re: %.5lf, im: %.5lf\n", i+1, sig_2D[i][2].re, sig_2D[i][2].im);
 	//}
