@@ -8,6 +8,7 @@
 #define PI acos(-1)
 #define ARRAY_SIZE 786432
 #define MAX_LINE 1024
+#define INF 0x3f3f3f3f  //无穷大
 
 typedef struct complex {  /*定义复数结构体*/
 	double re;
@@ -1295,19 +1296,74 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 }
 
 
+void DOA_BF_PeakDet_loc(double * inData) {
+	double gamma = 1.0471;
+	int sidelobeLevel_dB = 1, maxVal = 0, maxLoc = 0, locateMax = 0, km = 1, numMax = 0,
+		extendLoc = 0, initStage = 1, absMaxValue = 0;
+	//inData = inData(:);
+	double minVal = INF;
+	int i=0, N=256, i_loc, maxLoc_r, bwidth;
+	double currentVal;
+	while (i < (N + extendLoc - 1)) {
+		i++;
+		// i_loc = rem(i-1, N)+1
+		i_loc = (i - 1) % N + 1;  //index, 记得-1！！
+		currentVal = inData[i_loc-1];
+		if (currentVal > absMaxValue) {
+			absMaxValue = currentVal;
+		}
+		if (currentVal > maxVal) {
+			maxVal = currentVal;
+			maxLoc = i_loc;
+			maxLoc_r = i;
+		}
+		if (currentVal < minVal) {
+			minVal = currentVal;
+		}
+		if (locateMax!=0) {
+			if(currentVal < maxVal / gamma)
+				numMax = numMax + 1;
+			bwidth = i - maxLoc_r;
+			//maxData = [maxData(1:numMax - 1, : ); maxLoc maxVal bwidth maxLoc_r]
+			//待写！！
+			minVal = currentVal;
+			locateMax = 0;
+		}
+		else {
+			if (currentVal > minVal * gamma) {
+				locateMax = 1;
+				maxVal = currentVal;
+				if (initStage == 1)
+					extendLoc = i;
+				initStage = 0;
+			}
+		}
+	}
+	int numMax_ = 0, totPower = 0;
+	for (int i = 0; i < numMax; i++) {
+
+	}
+}
+
+
 void DOA_beamformingFFT_2D(COMPLEX *sig) {
 	int angles_DOA_az[2] = { -80, 80 }, angles_DOA_ele[2] = { -20, 20 };
 	double d = 0.5046;
 	int angleFFTSize = 256, apertureLen_azim, apertureLen_elev;
+	int obj_sidelobeLevel_dB_azim = 1, obj_sidelobeLevel_dB;
 	int(*D)[2] = (int(*)[2])malloc(sizeof(int) * 192 * 2);  //怎么生成D？
 	int D1[192] = { 0,1,2,3,11,12,13,14,46,47,48,49,50,51,52,53,4,5,6,7,15,16,17,18,50,51,52,53,54,55,56,57,8,9,10,11,19,20,21,22,54,55,56,57,58,59,60,61,12,13,14,15,23,24,25,26,58,59,60,61,62,63,64,65,16,17,18,19,27,28,29,30,62,63,64,65,66,67,68,69,20,21,22,23,31,32,33,34,66,67,68,69,70,71,72,73,24,25,26,27,35,36,37,38,70,71,72,73,74,75,76,77,28,29,30,31,39,40,41,42,74,75,76,77,78,79,80,81,32,33,34,35,43,44,45,46,78,79,80,81,82,83,84,85,9,10,11,12,20,21,22,23,55,56,57,58,59,60,61,62,10,11,12,13,21,22,23,24,56,57,58,59,60,61,62,63,11,12,13,14,22,23,24,25,57,58,59,60,61,62,63,64 };
-	
+
 	COMPLEX(*sig_sel) = (COMPLEX*)malloc(sizeof(COMPLEX) * 192);
 	COMPLEX(*sig_2D)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 86 * 7);
 	COMPLEX(*fftOutput)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 256 * 7);
 	COMPLEX(*angle_sepc_1D_fft)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 256 * 7);
 	COMPLEX(*fftOutput1)[256] = (COMPLEX(*)[256])malloc(sizeof(COMPLEX) * 256 * 256);
 	COMPLEX(*angle_sepc_2D_fft)[256] = (COMPLEX(*)[256])malloc(sizeof(COMPLEX) * 256 * 256);
+	double(*wx_vec) = (double*)malloc(sizeof(double) * angleFFTSize);
+	double(*wz_vec) = (double*)malloc(sizeof(double) * angleFFTSize);
+	double(*spec_azim) = (double*)malloc(sizeof(double) * 256);
+
 	for (int i = 0; i < 144; i++) {
 		D[i][1] = 0 + 1;
 	}
@@ -1422,10 +1478,6 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 		}
 	}
 	fftshift_1(fftOutput, angle_sepc_1D_fft);
-	for (int i = 0; i < 256; i++) {
-		printf("%d  re: %.5lf, im: %.5lf\n", i + 1, angle_sepc_1D_fft[i][0].re, angle_sepc_1D_fft[i][0].im);
-	}
-	scanf("end");
 	//angle_sepc_2D_fft=fftshift(fft(angle_sepc_1D_fft,angleFFTSize,2),2); 
 	double pr1[256], pi1[256], fr1[256], fi1[256];
 	for (int j = 0; j < 256; j++) {
@@ -1438,26 +1490,42 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 			pi1[i] = 0;
 		}
 		//每行进行fft
-		kfft(pr1, pr1, 256, 8, fr1, fi1);
+		kfft(pr1, pi1, 256, 8, fr1, fi1);
 		for (int i = 0; i < 256; i++) {  //
 			fftOutput1[j][i].re = fr1[i];
 			fftOutput1[j][i].im = fi1[i];
 		}
 	}
 	fftshift_2_1(fftOutput1, angle_sepc_2D_fft);
-	for (int i = 0; i < 256; i++) {
-		printf("%d  re: %.5lf, im: %.5lf\n", i + 1, angle_sepc_2D_fft[i][0].re, angle_sepc_2D_fft[i][0].im);
-	}
-	scanf("end");
-	//for (int i = 0; i < 86; i++) {
-	//	printf("%d  re: %.5lf, im: %.5lf\n", i+1, sig_2D[i][2].re, sig_2D[i][2].im);
+	//for (int i = 0; i < 256; i++) {
+	//	printf("%d  re: %.5lf, im: %.5lf\n", i + 1, angle_sepc_2D_fft[i][2].re, angle_sepc_2D_fft[i][2].im);
 	//}
 	//scanf("end");
+
+	//wx_vec=[-pi:2*pi/angleFFTSize:pi]; wz_vec = [-pi:2 * pi / angleFFTSize : pi];
+	//wx_vec = wx_vec(1:end-1); wz_vec = wz_vec(1:end - 1): 取前256个元素
+	for (int i = 0; i < angleFFTSize; i++) {
+		wx_vec[i] = -PI + i * 2 * PI / angleFFTSize;
+		wz_vec[i] = -PI + i * 2 * PI / angleFFTSize; 
+	}
+	//spec_azim = abs(angle_sepc_1D_fft(:,1))
+	for (int i = 0; i < 256; i++) {
+		spec_azim[i] = sqrt(pow(angle_sepc_1D_fft[i][0].re, 2) + pow(angle_sepc_1D_fft[i][0].im, 2));
+	}
+	obj_sidelobeLevel_dB = obj_sidelobeLevel_dB_azim;
+	//[peakVal_azim, peakLoc_azim] = DOA_BF_PeakDet_loc(obj, spec_azim);% 水平谱峰搜索
+	
 
 	free(D);
 	free(sig_sel);
 	free(fftOutput);
 	free(angle_sepc_1D_fft);
+	free(wx_vec);
+	free(wz_vec);
+	free(spec_azim);
+	spec_azim = NULL;
+	wz_vec = NULL;
+	wx_vec = NULL;
 	angle_sepc_1D_fft = NULL;
 	fftOutput = NULL;
 	sig_sel = NULL;
