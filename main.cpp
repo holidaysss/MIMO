@@ -28,8 +28,10 @@ typedef struct detectionResult {
 	double overlapTests;
 	double overlapTestsVal;
 	double noise_var;
-	COMPLEX *bin_val;
+	COMPLEX* bin_val;
 	double estSNR;
+	double* angles;
+	COMPLEX(*spectrum)[256];
 }Detection, DR;
 
 typedef struct calibResult1 {
@@ -340,7 +342,7 @@ void calibration_datapath(CalibrationObj* obj, COMPLEX outData_re[][64][16][12])
 							}
 						}
 					}
-					
+
 				}
 				free(outData1TX);
 				outData1TX = NULL;
@@ -394,7 +396,7 @@ void rangeProcCascade_datapath(COMPLEX input[256][64][16], COMPLEX out[][64][16]
 			//inputMat = squeeze(input(:,:,i_an))  256,64,16 -> 256,64
 			for (int i = 0; i < 256; i++) {
 				for (int j = 0; j < 64; j++) {
-					inputMat[i][j] = input[i][j][i_an];			
+					inputMat[i][j] = input[i][j][i_an];
 				}
 			}
 			//inputMat = bsxfun(@minus, inputMat, mean(inputMat))
@@ -446,7 +448,7 @@ void rangeProcCascade_datapath(COMPLEX input[256][64][16], COMPLEX out[][64][16]
 			//	printf("fftOutput:%.5lf + %.5lf\n", fftOutput[2][i].re, fftOutput[2][i].im);
 			//}
 			//scanf("end");
-			
+
 			if (FFTOutScaleOn == 1) {
 				for (int i = 0; i < 64; i++) {
 					for (int j = 0; j < 256; j++) {
@@ -457,7 +459,7 @@ void rangeProcCascade_datapath(COMPLEX input[256][64][16], COMPLEX out[][64][16]
 			}
 			//out(:,:,i_an) = fftOutput
 			for (int i = 0; i < 64; i++) {
-				for (int j = 0; j < 256; j++){
+				for (int j = 0; j < 256; j++) {
 					out[j][i][i_an] = fftOutput[j][i];
 				}
 			}
@@ -598,7 +600,7 @@ void writetxt(double input[], size_t size, const char name[])
 	unsigned int i = 0;
 	fp = fopen(name, "w");
 	//printf("longggggggggg: %d\n", size);
-	while (i< size) {
+	while (i < size) {
 		fprintf(fp, "%.4lf\n", input[i]);
 		i++;
 	}
@@ -634,10 +636,10 @@ void CFAR_CASO_Range_2D(double sig_integrate[256][64], int* N_obj, int Ind_obj[]
 	//int N_obj = 0;     /*检测到的目标数*/
 	int discardCellLeft = 10, discardCellRight = 10;
 	int discardCellTop = 10, discardCellBottom = 20;
-	double *sigv = (double(*))malloc(sizeof(double) * 64);
-	double *v = (double(*))malloc(sizeof(double) * 44);
-	double *vecLeft = (double(*))malloc(sizeof(double) * 16);
-	double *vecRight = (double(*))malloc(sizeof(double) * 16);
+	double* sigv = (double(*))malloc(sizeof(double) * 64);
+	double* v = (double(*))malloc(sizeof(double) * 44);
+	double* vecLeft = (double(*))malloc(sizeof(double) * 16);
+	double* vecRight = (double(*))malloc(sizeof(double) * 16);
 	double(*vec)[76] = (double(*)[76])malloc(sizeof(double) * M_samp * 76); /*左右补数据*/
 
 
@@ -654,7 +656,7 @@ void CFAR_CASO_Range_2D(double sig_integrate[256][64], int* N_obj, int Ind_obj[]
 			vecLeft[i] = v[i];
 			vecRight[i] = v[i + 28];  /*44-16=28*/
 			vec[k][i] = vecLeft[i];
-			vec[k][i+16+44] = vecRight[i];
+			vec[k][i + 16 + 44] = vecRight[i];
 		}
 	}
 
@@ -669,7 +671,7 @@ void CFAR_CASO_Range_2D(double sig_integrate[256][64], int* N_obj, int Ind_obj[]
 		}
 		for (int i = 0; i < 226; i++) {
 			v_1[i] = sigv_1[i + discardCellTop];
-			vector[i+16][k] = v_1[i];  /*居中*/
+			vector[i + 16][k] = v_1[i];  /*居中*/
 		}
 		for (int i = 0; i < 16; i++) {
 			vecLeft[i] = v_1[i];
@@ -680,21 +682,21 @@ void CFAR_CASO_Range_2D(double sig_integrate[256][64], int* N_obj, int Ind_obj[]
 	}
 	m = 258, n = 76;
 	//operator = ones(2*gaptot + 1)/((gaptot*2+1)^2-(gapNum*2+1)^2)
-	double(*operator_1)[33] = (double(*)[33])malloc(sizeof(double*) * 33 * 33*5); /* 2*gaptot+1=33 */
+	double(*operator_1)[33] = (double(*)[33])malloc(sizeof(double*) * 33 * 33 * 5); /* 2*gaptot+1=33 */
 	for (int i = 0; i < 2 * gaptot + 1; i++) {
 		for (int j = 0; j < 2 * gaptot + 1; j++) {
 			operator_1[i][j] = 1 / (pow(gaptot * 2 + 1, 2) - pow(gapNum * 2 + 1, 2));
 		}
 	}
 	//operator(cellNum+1:cellNum+2*gapNum+1,cellNum+1:cellNum+2*gapNum+1) = 0
-	for (int i = cellNum; i < cellNum + 2 * gapNum+1; i++) {
-		for (int j = cellNum; j < cellNum + 2 * gapNum+1; j++) {
+	for (int i = cellNum; i < cellNum + 2 * gapNum + 1; i++) {
+		for (int j = cellNum; j < cellNum + 2 * gapNum + 1; j++) {
 			operator_1[i][j] = 0;
 		}
 	}
 	//meanCell = conv2(vector,operator);
 	/* step1: padding */
-	double(*meanCell_pre)[140] = (double(*)[140])malloc(sizeof(double) * 322 * 140*5);
+	double(*meanCell_pre)[140] = (double(*)[140])malloc(sizeof(double) * 322 * 140 * 5);
 	for (int i = 0; i < 322; i++) {
 		for (int j = 0; j < 140; j++) {
 			meanCell_pre[i][j] = 0;
@@ -702,7 +704,7 @@ void CFAR_CASO_Range_2D(double sig_integrate[256][64], int* N_obj, int Ind_obj[]
 	}
 	for (int i = 32; i < 290; i++) {
 		for (int j = 32; j < 108; j++) {
-			meanCell_pre[i][j] = vector[i-32][j-32];
+			meanCell_pre[i][j] = vector[i - 32][j - 32];
 		}
 	}
 	/* step2: whirl operator 180` */
@@ -726,10 +728,10 @@ void CFAR_CASO_Range_2D(double sig_integrate[256][64], int* N_obj, int Ind_obj[]
 	}
 	//result = K0*meanCell(gaptot + 1:m - gaptot , gaptot + 1:n - gaptot)< vector(gaptot + 1:m - gaptot, gaptot + 1 : n - gaptot);
 	int(*result)[44] = (int(*)[44])malloc(sizeof(int) * 226 * 44);
-	int cout=0;  /*TrueNum*/
+	int cout = 0;  /*TrueNum*/
 	for (int i = 0; i < 226; i++) {
 		for (int j = 0; j < 44; j++) {
-			if (KO*meanCell[i+gaptot][j+gaptot]<vector[i+gaptot][j+gaptot]) {
+			if (KO * meanCell[i + gaptot][j + gaptot] < vector[i + gaptot][j + gaptot]) {
 				result[i][j] = 1;
 				cout++;
 			}
@@ -743,13 +745,13 @@ void CFAR_CASO_Range_2D(double sig_integrate[256][64], int* N_obj, int Ind_obj[]
 	//Ind_obj = [TargetInd(:,1)+discardCellTop,TargetInd(:,2)+discardCellLeft];
 	int(*TargetInd)[2] = (int(*)[2])malloc(sizeof(int) * cout * 2);
 	int index = 0;
-	for (int j = 0; j < 44; j++){  /*列优先*/
-		for (int i = 0; i < 226; i++){
-			if (result[i][j] == 1){
-				TargetInd[index][0] = i+1;
-				TargetInd[index][1] = j+1;
-				Ind_obj[index][0] = i+discardCellTop+1;
-				Ind_obj[index][1] = j+discardCellLeft+1;
+	for (int j = 0; j < 44; j++) {  /*列优先*/
+		for (int i = 0; i < 226; i++) {
+			if (result[i][j] == 1) {
+				TargetInd[index][0] = i + 1;
+				TargetInd[index][1] = j + 1;
+				Ind_obj[index][0] = i + discardCellTop + 1;
+				Ind_obj[index][1] = j + discardCellLeft + 1;
 				index++;
 			}
 		}
@@ -820,7 +822,7 @@ int cmpfunc(const void* a, const void* b)
 }
 
 
-void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2], COMPLEX sigCpml[256][64][192], double sig_integ[256][64]) {
+void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int* N_obj, int Ind_obj_Rag[][2], COMPLEX sigCpml[256][64][192], double sig_integ[256][64]) {
 	//参数区
 	int maxEnable = 0;
 	int cellNum0[2] = { 8,4 };
@@ -829,10 +831,10 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 	int rangeNumBins = 256; /*size(sig_integ,1)*/
 	//工作区
 	//detected_Rag_Cell = unique(Ind_obj_Rag(:,1))
-	int *detected_Rag_Cell = (int*)malloc(rangeNumBins * sizeof(int));
+	int* detected_Rag_Cell = (int*)malloc(rangeNumBins * sizeof(int));
 	int index = 0, flag;
 	detected_Rag_Cell[0] = Ind_obj_Rag[0][0];  /*首值*/
-	for (int i = 1; i < 211;i++) {
+	for (int i = 1; i < 211; i++) {
 		flag = 1;
 		for (int j = 0; j < index + 1; j++) {  /*忽略重复值*/
 			if (detected_Rag_Cell[j] == Ind_obj_Rag[i][0]) {
@@ -845,17 +847,17 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 		}
 	}
 	if (detected_Rag_Cell != 0) {
-		qsort(detected_Rag_Cell, index+1, sizeof(detected_Rag_Cell[0]), cmpfunc);  /*快排*/
+		qsort(detected_Rag_Cell, index + 1, sizeof(detected_Rag_Cell[0]), cmpfunc);  /*快排*/
 	}
 	else {
 		printf("快排失败");
 	}
-	double(*sig)[64] = (double(*)[64])malloc((index+1)*64 * sizeof(double));//83*64
+	double(*sig)[64] = (double(*)[64])malloc((index + 1) * 64 * sizeof(double));//83*64
 
 	//sig = sig_integ(detected_Rag_Cell,:);
-	for (int i = 0; i < index+1; i++) {
+	for (int i = 0; i < index + 1; i++) {
 		for (int j = 0; j < 64; j++) {
-			sig[i][j] = sig_integ[detected_Rag_Cell[i]-1][j];
+			sig[i][j] = sig_integ[detected_Rag_Cell[i] - 1][j];
 		}
 	}
 	//for (int k = 0; k < 211; k++) {
@@ -864,17 +866,17 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 	//scanf("end");
 	int M_samp = 83, N_pul = 64;
 	int gaptot = gapNum + cellNum;  /* gaptot=4 */
-	int detected_Rag_Cell_i, ind1_num, ind_obj_0 = 0,  condition, j0, ind_win;
+	int detected_Rag_Cell_i, ind1_num, ind_obj_0 = 0, condition, j0, ind_win;
 	double sum = 0;
 	double cellave1a, cellave1b, cellave1 = 0, maxInCell;
-	int index_a, index_Ind_obj=0;
+	int index_a, index_Ind_obj = 0;
 	double(*sigv) = (double*)malloc(64 * sizeof(double));
 	double(*vec) = (double*)malloc((N_pul + gaptot) * 2 * sizeof(double));  //奇怪的断点bug
 	int(*cellInd) = (int*)malloc(cellNum * 2 * sizeof(int));
 	double(*noiseEst) = (double*)malloc(N_pul * sizeof(double));
-	int(*ind_loc_all) = (int*)malloc(N_pul*211 * sizeof(int));
-	int(*ind_loc_Dop) = (int*)malloc(N_pul*211 * sizeof(int));
-	int(*ind_obj_00)[2] = (int(*)[2])malloc(N_pul*211 *2 * sizeof(int));
+	int(*ind_loc_all) = (int*)malloc(N_pul * 211 * sizeof(int));
+	int(*ind_loc_Dop) = (int*)malloc(N_pul * 211 * sizeof(int));
+	int(*ind_obj_00)[2] = (int(*)[2])malloc(N_pul * 211 * 2 * sizeof(int));
 	int Ind_obj_FLAG = 0;  /*初值flag*/
 	int(*ind1) = (int*)malloc(211 * sizeof(int));
 	int(*indR) = (int*)malloc(211 * sizeof(int));
@@ -904,19 +906,19 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 			vec[N_pul + gaptot + m] = sigv[m];
 		}
 		//vec(gaptot + 1: N_pul + gaptot) = sigv;
-		for (int p = gaptot; p < N_pul +gaptot; p++) {
-			vec[p] = sigv[p-gaptot];
+		for (int p = gaptot; p < N_pul + gaptot; p++) {
+			vec[p] = sigv[p - gaptot];
 		}
 
 		// ind_loc_all = []; ind_loc_Dop = [];
 		index_a = 0;
 		for (int j = gaptot; j < N_pul + gaptot; j++) {
 			//cellInd=[j-gaptot: j-gapNum-1 j+gapNum+1:j+gaptot] -> 0 1 2 3, 5 6 7 8
-			for (int k = j-gaptot,i=0; k < j - gapNum; k++,i++) {
+			for (int k = j - gaptot, i = 0; k < j - gapNum; k++, i++) {
 				cellInd[i] = k;
 				sum += vec[cellInd[i]];
 			}
-			for (int k = j+gapNum+1, i= gaptot - gapNum; k < j + gaptot + 1; k++, i++) {
+			for (int k = j + gapNum + 1, i = gaptot - gapNum; k < j + gaptot + 1; k++, i++) {
 				cellInd[i] = k;
 				sum += vec[cellInd[i]];
 			}
@@ -925,12 +927,12 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 		}
 
 		for (int j = gaptot; j < N_pul + gaptot; j++) {
-			j0 = j - gaptot +1; // ！！+1
+			j0 = j - gaptot + 1; // ！！+1
 			//cellInd=[j-gaptot: j-gapNum-1 j+gapNum+1:j+gaptot]
-			for (int k = j - gaptot, i=0; k < j  - gapNum; k++, i++) {
+			for (int k = j - gaptot, i = 0; k < j - gapNum; k++, i++) {
 				cellInd[i] = k;
 			}
-			for (int k = j + gapNum + 1, i = gaptot-gapNum; k < j + gaptot + 1; k++, i++) {
+			for (int k = j + gapNum + 1, i = gaptot - gapNum; k < j + gaptot + 1; k++, i++) {
 				cellInd[i] = k;
 			}
 
@@ -959,10 +961,10 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 			}
 
 			if (maxEnable == 1) {
-				condition = (vec[j]>KO*cellave1)&&(vec[j]>maxInCell);
+				condition = (vec[j] > KO * cellave1) && (vec[j] > maxInCell);
 			}
 			else {
-				condition = (vec[j]>KO*cellave1);
+				condition = (vec[j] > KO * cellave1);
 			}
 			if (condition == 1) {
 				//if(find(indR == j0))
@@ -1003,7 +1005,7 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 					//if (length(find(Ind_obj_sum == ind_obj_0_sum(ii)))==0)
 					int find_flag = 0;
 					for (int j = 0; j < index_Ind_obj; j++) {
-						if (Ind_obj[j][0]+10000*Ind_obj[j][1] == ind_loc_all[ii]+10000*ind_loc_Dop[ii]) {
+						if (Ind_obj[j][0] + 10000 * Ind_obj[j][1] == ind_loc_all[ii] + 10000 * ind_loc_Dop[ii]) {
 							find_flag = 1;
 							break;
 						}
@@ -1029,17 +1031,17 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 	gaptot = gapNum + cellNum;
 	int N_obj_valid = 0;
 	int ind_range, ind_Dop;
-	double min_sig, temp_sig, mean_sig=0, obj_powerThre = 0;
+	double min_sig, temp_sig, mean_sig = 0, obj_powerThre = 0;
 	int obj_numAntenna = 192;
 	int(*cellInd_1) = (int*)malloc(cellNum * 2 * sizeof(int));  /*cellNum:4->8*/
 	double(*noise_obj_an)[143] = (double(*)[143])malloc(192 * index_Ind_obj * sizeof(double));  /* index_Ind_obj:143 */
 	int(*Ind_obj_valid)[2] = (int(*)[2])malloc(143 * 2 * sizeof(int));  /*cellnum:4->8*/
 
 	for (int i_obj = 0; i_obj < *N_obj; i_obj++) {
-		ind_range = Ind_obj[i_obj][0]-1;  //索引起点为0
-		ind_Dop = Ind_obj[i_obj][1]-1;
+		ind_range = Ind_obj[i_obj][0] - 1;  //索引起点为0
+		ind_Dop = Ind_obj[i_obj][1] - 1;
 		//if (min(abs(sigCpml(ind_range, ind_Dop,:)).^2) < obj.powerThre)
-		min_sig = pow(sigCpml[ind_range][ind_Dop][0].re, 2)+ pow(sigCpml[ind_range][ind_Dop][0].im, 2); /*初值*/
+		min_sig = pow(sigCpml[ind_range][ind_Dop][0].re, 2) + pow(sigCpml[ind_range][ind_Dop][0].im, 2); /*初值*/
 		for (int i = 1; i < 192; i++) {
 			temp_sig = pow(sigCpml[ind_range][ind_Dop][i].re, 2) + pow(sigCpml[ind_range][ind_Dop][i].im, 2);
 			if (min_sig > temp_sig) {
@@ -1052,7 +1054,7 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 
 		if (ind_range <= gaptot) {
 			// cellInd=[ind_range+gapNum+1:ind_range+gaptot ind_range+gapNum+1:ind_range+gaptot] 两段一样
-			for (int k = ind_range + gapNum + 1, i = 0; k < ind_range + gaptot+1; k++, i++) {
+			for (int k = ind_range + gapNum + 1, i = 0; k < ind_range + gaptot + 1; k++, i++) {
 				cellInd_1[i] = k;
 			}
 			for (int k = ind_range + gapNum + 1, i = cellNum; k < ind_range + gaptot + 1; k++, i++) {
@@ -1073,7 +1075,7 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 			for (int k = ind_range - gaptot, i = 0; k < ind_range - gapNum; k++, i++) {
 				cellInd_1[i] = k;
 			}
-			for (int k = ind_range + gapNum + 1, i = cellNum; k < ind_range + gaptot+1; k++, i++) {
+			for (int k = ind_range + gapNum + 1, i = cellNum; k < ind_range + gaptot + 1; k++, i++) {
 				cellInd_1[i] = k;
 			}
 		}
@@ -1085,7 +1087,7 @@ void CFAR_CASO_Doppler_overlap(int Ind_obj[][2], int *N_obj, int Ind_obj_Rag[][2
 			for (int i = 0; i < cellNum * 2; i++) {
 				//printf("i:%d j:%d ind_Dop:%d\n", i,j, ind_Dop);
 				//printf("cellInd_1:%d\n", cellInd_1[i]);
-				mean_sig += pow(sigCpml[cellInd_1[i]-1][ind_Dop][j].re, 2) + pow(sigCpml[cellInd_1[i]-1][ind_Dop][j].im, 2);
+				mean_sig += pow(sigCpml[cellInd_1[i] - 1][ind_Dop][j].re, 2) + pow(sigCpml[cellInd_1[i] - 1][ind_Dop][j].im, 2);
 			}
 			mean_sig = mean_sig / (cellNum * 2);
 			noise_obj_an[j][i_obj] = mean_sig;
@@ -1140,12 +1142,12 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 	double const angleFFTSize = 128, angleBinSkipLeft = 4, angleBinSkipRight = 4;
 	double  obj_rangeBinSize = 0.1465, obj_velocityBinSize = 0.1256;
 	int obj_dopplerFFTSize = 64, obj_detectMethod = 1, obj_numAntenna = 192, obj_applyVmaxExtend = 0,
-		obj_minDisApplyVmaxExtend = 10, obj_TDM_MIMO_numTX = 12, obj_numRxAnt=16;
+		obj_minDisApplyVmaxExtend = 10, obj_TDM_MIMO_numTX = 12, obj_numRxAnt = 16;
 	int not_empty_obj_overlapAntenna_ID = 1;
 	double(*sig_integrate_1)[64] = (double(*)[64])malloc(sizeof(double) * 256 * 64); /*左右补数据*/
 	/*CFAR_CASO_Range_2D的结果*/
 	int N_obj_Rag;
-	int(*Ind_obj_Rag)[2] = (int(*)[2])malloc(sizeof(int) * 44*226 * 2);
+	int(*Ind_obj_Rag)[2] = (int(*)[2])malloc(sizeof(int) * 44 * 226 * 2);
 	double(*noise_obj) = (double(*))malloc(sizeof(double) * 211);
 	double(*CFAR_SNR) = (double(*))malloc(sizeof(double) * 211);
 
@@ -1188,7 +1190,7 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 					if (Ind_obj_Rag[j][0] == indx1R) {
 						ind2R[indR_num++] = j;
 					}
-					
+
 				}
 				for (int j = 0; j < indR_num; j++) {
 					if (Ind_obj_Rag[ind2R[j]][1] == indx1D) {
@@ -1202,7 +1204,7 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 				noise_obj_agg[i_obj] = noise_obj[noiseInd];
 			}
 			int xind, dopplerInd, i_sig_bin;
-			double bin_val_sum=0;
+			double bin_val_sum = 0;
 			//detectionResult(*detection_results) = (detectionResult(*))malloc(sizeof(detectionResult) * N_obj);
 			int(*RX_ID) = (int(*))malloc(sizeof(int) * obj_numRxAnt);
 			COMPLEX(*sig_bin) = (COMPLEX(*))malloc(sizeof(COMPLEX) * obj_TDM_MIMO_numTX * obj_numRxAnt);
@@ -1210,7 +1212,7 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 			for (int i = 0; i < N_obj; i++) {
 				bin_val_1[i] = (COMPLEX*)malloc(sizeof(COMPLEX) * obj_TDM_MIMO_numTX * obj_numRxAnt);
 			}
-			for (int i_obj = 0; i_obj < N_obj;i_obj++) {
+			for (int i_obj = 0; i_obj < N_obj; i_obj++) {
 				xind = (Ind_obj[i_obj][0] - 1) + 1;
 				detection_results[i_obj].rangeInd = Ind_obj[i_obj][0] - 1;
 				detection_results[i_obj].range = detection_results[i_obj].rangeInd * obj_rangeBinSize;
@@ -1223,7 +1225,7 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 				detection_results[i_obj].noise_var = noise_obj_agg[i_obj];
 				detection_results[i_obj].bin_val = bin_val_1[i_obj];  //指向动态数组
 				for (int i = 0; i < obj_numAntenna; i++) {
-					detection_results[i_obj].bin_val[i]=input[xind-1][Ind_obj[i_obj][1]-1][i];  // index-1
+					detection_results[i_obj].bin_val[i] = input[xind - 1][Ind_obj[i_obj][1] - 1][i];  // index-1
 					bin_val_sum += (pow(detection_results[i_obj].bin_val[i].im, 2) + pow(detection_results[i_obj].bin_val[i].re, 2));
 				}
 				//for (int i = 0; i < obj_numAntenna; i++) {
@@ -1241,7 +1243,7 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 					/* Doppler phase correction due to TDM MIMO without apply */
 					/* Vmax extention algorithm */
 					deltaPhi = 2 * PI * (double(dopplerInd) - obj_dopplerFFTSize / 2) / (double(obj_TDM_MIMO_numTX) * obj_dopplerFFTSize);
-					i_sig_bin=0;
+					i_sig_bin = 0;
 					for (int i_TX = 0; i_TX < obj_TDM_MIMO_numTX; i_TX++) {
 						// RX_ID = (i_TX-1)*obj.numRxAnt+1 : i_TX*obj.numRxAnt
 						// sig_bin(RX_ID,: )= sig_bin_org(RX_ID )* exp(-1j*(i_TX-1)*deltaPhi)
@@ -1296,13 +1298,13 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 }
 
 
-int DOA_BF_PeakDet_loc(double * inData, double *peakVal, int * peakLoc) {
+int DOA_BF_PeakDet_loc(double* inData, double* peakVal, int* peakLoc) {
 	double gamma = 1.0471;
 	int sidelobeLevel_dB = 1, maxVal = 0, maxLoc = 0, locateMax = 0, km = 1, numMax = 0,
 		extendLoc = 0, initStage = 1, absMaxValue = 0;
 	//inData = inData(:);
 	double minVal = INF;
-	int i=0, N=256, i_loc, maxLoc_r, bwidth;
+	int i = 0, N = 256, i_loc, maxLoc_r, bwidth;
 	double currentVal;
 	double(*maxData)[4] = (double(*)[4])malloc(sizeof(double) * 256 * 4);
 	double(*maxData1)[4] = (double(*)[4])malloc(sizeof(double) * 256 * 4);
@@ -1339,7 +1341,7 @@ int DOA_BF_PeakDet_loc(double * inData, double *peakVal, int * peakLoc) {
 				if (currentVal > minVal * gamma) {
 					locateMax = 1;
 					maxVal = currentVal;
-					if (initStage == 1){
+					if (initStage == 1) {
 						extendLoc = i;
 						initStage = 0;
 					}
@@ -1348,7 +1350,7 @@ int DOA_BF_PeakDet_loc(double * inData, double *peakVal, int * peakLoc) {
 		}
 		int numMax1 = 0, totPower = 0;
 		for (int i = 0; i < numMax; i++) {
-			if (maxData[i][1] >= absMaxValue * pow(10,double(-sidelobeLevel_dB) / 10)) {
+			if (maxData[i][1] >= absMaxValue * pow(10, double(-sidelobeLevel_dB) / 10)) {
 				for (int j = 0; j < 3; j++) {
 					maxData1[numMax1][j] = maxData[i][j];
 				}
@@ -1370,7 +1372,7 @@ int DOA_BF_PeakDet_loc(double * inData, double *peakVal, int * peakLoc) {
 		//printf("out:%.5lf", peakVal[0]);
 		//scanf("end");
 		free(maxData);
-		free(maxData1);
+		free(maxData1); //?
 		maxData1 = NULL;
 		maxData = NULL;
 	}
@@ -1378,7 +1380,7 @@ int DOA_BF_PeakDet_loc(double * inData, double *peakVal, int * peakLoc) {
 }
 
 
-void DOA_beamformingFFT_2D(COMPLEX* sig) {
+void DOA_beamformingFFT_2D(COMPLEX* sig, COMPLEX angle_sepc_2D_fft[][256], double** angleObj_est, int* size_2_DOA_angles) {
 	int angles_DOA_az[2] = { -80, 80 }, angles_DOA_ele[2] = { -20, 20 };
 	double d = 0.5046;
 	int angleFFTSize = 256, apertureLen_azim, apertureLen_elev;
@@ -1391,7 +1393,6 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 	COMPLEX(*fftOutput)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 256 * 7);
 	COMPLEX(*angle_sepc_1D_fft)[7] = (COMPLEX(*)[7])malloc(sizeof(COMPLEX) * 256 * 7);
 	COMPLEX(*fftOutput1)[256] = (COMPLEX(*)[256])malloc(sizeof(COMPLEX) * 256 * 256);
-	COMPLEX(*angle_sepc_2D_fft)[256] = (COMPLEX(*)[256])malloc(sizeof(COMPLEX) * 256 * 256);
 	double(*wx_vec) = (double*)malloc(sizeof(double) * angleFFTSize);
 	double(*wz_vec) = (double*)malloc(sizeof(double) * angleFFTSize);
 	double(*spec_azim) = (double*)malloc(sizeof(double) * 256);
@@ -1422,7 +1423,7 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 			apertureLen_elev = D[i][1];
 		}
 	}
-	int ind_num = 0, indU_num=1, flag=1, temp, change_flag=0;
+	int ind_num = 0, indU_num = 1, flag = 1, temp, change_flag = 0;
 	for (int i_line = 0; i_line < apertureLen_elev; i_line++) {
 		//初始化
 		int(*ind) = (int*)malloc(sizeof(int) * 192);
@@ -1432,7 +1433,7 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 		indU_num = 1, ind_num = 0;
 		// ind = find(D(:,2) == i_line);
 		for (int j = 0; j < 192; j++) {
-			if (D[j][1] == i_line+1) {  //i_line+1, 起始值+1
+			if (D[j][1] == i_line + 1) {  //i_line+1, 起始值+1
 				ind[ind_num++] = j;
 			}
 		}
@@ -1539,7 +1540,7 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 	//wx_vec = wx_vec(1:end-1); wz_vec = wz_vec(1:end - 1): 取前256个元素
 	for (int i = 0; i < angleFFTSize; i++) {
 		wx_vec[i] = -PI + i * 2 * PI / angleFFTSize;
-		wz_vec[i] = -PI + i * 2 * PI / angleFFTSize; 
+		wz_vec[i] = -PI + i * 2 * PI / angleFFTSize;
 	}
 	//spec_azim = abs(angle_sepc_1D_fft(:,1))
 	for (int i = 0; i < 256; i++) {
@@ -1557,10 +1558,7 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 	else {
 		int obj_cnt = 0, ind;
 		double azim_est, elev_est;
-		double** angleObj_est = (double**)malloc(sizeof(double*) * 4);// 已知第一维
-		for (int i = 0; i < 4; i++) {
-			angleObj_est[i] = (double*)malloc(sizeof(double) * len_peakLoc_azim * 256);
-		}
+
 
 		//obj.sidelobeLevel_dB = obj.sidelobeLevel_dB_elev;
 		for (int i_obj = 0; i_obj < len_peakLoc_azim; i_obj++) {
@@ -1574,12 +1572,12 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 			int len_peakLoc_azim1 = DOA_BF_PeakDet_loc(spec_elev, peakVal_elev, peakLoc_elev);
 			for (int j_elev = 0; j_elev < len_peakLoc_azim1; j_elev++) {
 				azim_est = 180 * asin(wx_vec[ind] / (2 * PI * d)) / PI; //弧度转度
-				elev_est = 180 * asin(wx_vec[peakLoc_elev[j_elev]-1] / (2 * PI * d)) / PI;
-				if (azim_est >= angles_DOA_az[0] && azim_est <= angles_DOA_az[1]&&
+				elev_est = 180 * asin(wx_vec[peakLoc_elev[j_elev] - 1] / (2 * PI * d)) / PI;
+				if (azim_est >= angles_DOA_az[0] && azim_est <= angles_DOA_az[1] &&
 					elev_est >= angles_DOA_ele[0] && elev_est <= angles_DOA_ele[1]) {
 					angleObj_est[0][obj_cnt] = azim_est;
 					angleObj_est[1][obj_cnt] = elev_est;
-					angleObj_est[2][obj_cnt] = ind+1;
+					angleObj_est[2][obj_cnt] = ind + 1;
 					angleObj_est[3][obj_cnt++] = peakLoc_elev[j_elev];
 				}
 				else {
@@ -1591,16 +1589,12 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 			peakLoc_elev = NULL;
 			peakVal_elev = NULL;
 		}
+		*size_2_DOA_angles = obj_cnt;
 		//for (int i = 0; i < 4; i++) {
 		//	printf("%d  %.5lf\n", i + 1, angleObj_est[i][2]);
 		//}
 		//scanf("end");
-		for (int i = 0; i < 4; i++)
-			free(angleObj_est[i]);
-		free(angleObj_est);
-		angleObj_est = NULL;
 	}
-	//scanf("end");
 	free(D);
 	free(sig_sel);
 	free(fftOutput);
@@ -1633,12 +1627,25 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 
 
 void DOA_path(detectionResult detected_obj[], detectionResult out[]) {
-	out = detected_obj;
+	//out = detected_obj;
+	int flag = 1;
 	int numAoAObjCnt = 0, obj_method = 1;
-	double estSNR, sum=0;
+	double estSNR, sum = 0;
 	detectionResult current_obj;
-	COMPLEX(*X)= (COMPLEX*)malloc(sizeof(COMPLEX) * 192);
+	COMPLEX(*X) = (COMPLEX*)malloc(sizeof(COMPLEX) * 192);
 	COMPLEX(*R)[192] = (COMPLEX(*)[192])malloc(sizeof(COMPLEX) * 192 * 192);
+	COMPLEX(*angle_sepc_2D_fft)[256] = (COMPLEX(*)[256])malloc(sizeof(COMPLEX) * 256 * 256);
+	double** DOA_angles = (double**)malloc(sizeof(double*) * 4);// 已知第一维
+	double(**angles_1) = (double**)malloc(sizeof(double*) * 3);
+	if (DOA_angles != NULL && angles_1 != NULL) {
+		for (int i = 0; i < 4; i++) {
+			DOA_angles[i] = (double*)malloc(sizeof(double) * 128);// 富余内存
+		}
+		for (int i = 0; i < 3; i++) {
+			angles_1[i] = (double*)malloc(sizeof(double) * 4);
+		}
+	}
+	int size_2_DOA_angles = 0;
 	if (X != NULL && R != NULL) {
 		for (int i_obj = 0; i_obj < 143; i_obj++) {
 			current_obj = detected_obj[i_obj];
@@ -1653,22 +1660,71 @@ void DOA_path(detectionResult detected_obj[], detectionResult out[]) {
 				for (int j = 0; j < 192; j++) {
 					R[i][j].re = X[i].re * X[j].re + X[i].im * X[j].im;  // X'的虚部取反??
 					R[i][j].im = X[i].im * X[j].re - X[i].re * X[j].im;
-					//printf("i%d j%d: %.5lf + %.5lfi\n",i+1, j+1, R[i][j].re, R[i][j].im);
 				}
 			}
-			//scanf("end");
 			switch (obj_method)
 			{
 			case 1:
-				DOA_beamformingFFT_2D(X);
+				DOA_beamformingFFT_2D(X, angle_sepc_2D_fft, DOA_angles, &size_2_DOA_angles);
+				if (numAoAObjCnt == 0) {
+					flag = 0; //不用执行 out = detected_obj
+					for (int i = 0; i < size_2_DOA_angles; i++, numAoAObjCnt++) {
+						//out = [], 输出另起炉灶
+						out[numAoAObjCnt].rangeInd = current_obj.rangeInd;
+						out[numAoAObjCnt].dopplerInd = current_obj.dopplerInd;
+						out[numAoAObjCnt].range = current_obj.range;
+						out[numAoAObjCnt].doppler_corr = current_obj.doppler_corr;
+						out[numAoAObjCnt].dopplerInd_org = current_obj.dopplerInd_org;
+						out[numAoAObjCnt].noise_var = current_obj.noise_var;
+						out[numAoAObjCnt].bin_val = current_obj.bin_val;
+						out[numAoAObjCnt].estSNR = current_obj.estSNR;
+						out[numAoAObjCnt].doppler_corr_overlap = current_obj.doppler_corr_overlap;
+						out[numAoAObjCnt].doppler_corr_FFT = current_obj.doppler_corr_FFT;
+						//out[numAoAObjCnt].spectrum = angle_sepc_2D_fft;
+						out[numAoAObjCnt].spectrum = (COMPLEX(*)[256])malloc(sizeof(COMPLEX)*256*256);
+						for (int i = 0; i < 256; i++) {
+							for (int j = 0; j < 256; j++) {
+								out[numAoAObjCnt].spectrum[i][j] = angle_sepc_2D_fft[i][j];
+							}
+						}
+						//out[numAoAObjCnt].angles = DOA_angles(:, i);
+						//out[numAoAObjCnt].angles = angles_1[i];  //指向一个一维数组指针
+						out[numAoAObjCnt].angles = (double*)malloc(sizeof(double) * 4);
+						for (int j = 0; j < 4; j++) {  //赋值
+							out[numAoAObjCnt].angles[j] = DOA_angles[j][i];
+						}
+					}
+				}
 				break;
 			default:
 				break;
 			}
 		}
 	}
+	if (flag == 1) {
+		out = detected_obj;
+	}
+	//for (int i = 0; i < 256; i++) {
+	//	//printf("i:%d re: %.5lf, im: %.5lf\n",i+1, angle_sepc_2D_fft[i][9].re, angle_sepc_2D_fft[i][9].im);
+	//	printf("i:%d %.5lf + %.5lfi\n", i + 1, out[1].spectrum[i][0].re, out[1].spectrum[i][0].im);
+	//}
+	//scanf("end");
+
 	free(X);
 	free(R);
+	for (int i = 0; i < 3; i++) {
+		free(angles_1[i]);
+		angles_1[i] = NULL;
+	}
+	free(angles_1);
+	angles_1 = NULL;
+	for (int i = 0; i < 4; i++)
+		free(DOA_angles[i]);
+	free(DOA_angles);
+	DOA_angles = NULL;
+
+	free(angle_sepc_2D_fft);
+	angle_sepc_2D_fft = NULL;
 	R = NULL;
 	X = NULL;
 }
@@ -1685,7 +1741,7 @@ int main() {
 	};
 	CalibrationObj calibrationObj = {
 		binfilePath, "E:\\MIMO_Clutter_Space_Time_Distribution\\main\\input\\calibrateResults_dummy.mat",
-		5, 1, 256, 64, 768, {11,10,9,8,7,6,5,4,3,2,1,0}, 7.8986e+13, 22500000, 8000000, 
+		5, 1, 256, 64, 768, {11,10,9,8,7,6,5,4,3,2,1,0}, 7.8986e+13, 22500000, 8000000,
 		8.9993e+13, 5, {12,13,14,15,0,1,2,3,8,9,10,11,4,5,6,7}, {12,13,14,15,0,1,2,3,8,9,10,11,4,5,6,7},
 		{11,10,9,8,7,6,5,4,3,2,1,0}, 16, 1, 0, 0, 0, "TDA2", {12,13,14,15,0,1,2,3,8,9,10,11,4,5,6,7}, 4, 0, 1,
 		"calibrationCascade", "E:\\MIMO_Clutter_Space_Time_Distribution\\main\\input\\test1_param.m"
@@ -1848,4 +1904,3 @@ int main() {
 	DopplerFFTOut_slice = NULL;
 	return 0;
 }
-
