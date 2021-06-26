@@ -1557,9 +1557,9 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 	else {
 		int obj_cnt = 0, ind;
 		double azim_est, elev_est;
-		int** angleObj_est = (int**)malloc(sizeof(int*) * 4);// 已知第一维
+		double** angleObj_est = (double**)malloc(sizeof(double*) * 4);// 已知第一维
 		for (int i = 0; i < 4; i++) {
-			angleObj_est[i] = (int*)malloc(sizeof(int) * len_peakLoc_azim * 256);
+			angleObj_est[i] = (double*)malloc(sizeof(double) * len_peakLoc_azim * 256);
 		}
 
 		//obj.sidelobeLevel_dB = obj.sidelobeLevel_dB_elev;
@@ -1567,20 +1567,19 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 			// spec_elev = abs(angle_sepc_2D_fft(ind,:))
 			ind = int(peakLoc_azim[i_obj]) - 1;  // index-1
 			for (int i = 0; i < 256; i++) {
-				printf("i_obj:%d  i: %d\n", i_obj, i);
 				spec_elev[i] = sqrt(pow(angle_sepc_2D_fft[ind][i].re, 2) + pow(angle_sepc_2D_fft[ind][i].im, 2));
 			}
 			double(*peakVal_elev) = (double(*))malloc(sizeof(double) * 256);
 			int(*peakLoc_elev) = (int(*))malloc(sizeof(int) * 256);
 			int len_peakLoc_azim1 = DOA_BF_PeakDet_loc(spec_elev, peakVal_elev, peakLoc_elev);
 			for (int j_elev = 0; j_elev < len_peakLoc_azim1; j_elev++) {
-				azim_est = asin(wx_vec[ind] / (2 * PI * d));
-				elev_est = asin(wx_vec[peakLoc_elev[j_elev]] / (2 * PI * d));
+				azim_est = 180 * asin(wx_vec[ind] / (2 * PI * d)) / PI; //弧度转度
+				elev_est = 180 * asin(wx_vec[peakLoc_elev[j_elev]-1] / (2 * PI * d)) / PI;
 				if (azim_est >= angles_DOA_az[0] && azim_est <= angles_DOA_az[1]&&
 					elev_est >= angles_DOA_ele[0] && elev_est <= angles_DOA_ele[1]) {
 					angleObj_est[0][obj_cnt] = azim_est;
 					angleObj_est[1][obj_cnt] = elev_est;
-					angleObj_est[2][obj_cnt] = ind;
+					angleObj_est[2][obj_cnt] = ind+1;
 					angleObj_est[3][obj_cnt++] = peakLoc_elev[j_elev];
 				}
 				else {
@@ -1592,16 +1591,15 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 			peakLoc_elev = NULL;
 			peakVal_elev = NULL;
 		}
+		//for (int i = 0; i < 4; i++) {
+		//	printf("%d  %.5lf\n", i + 1, angleObj_est[i][2]);
+		//}
+		//scanf("end");
 		for (int i = 0; i < 4; i++)
 			free(angleObj_est[i]);
 		free(angleObj_est);
 		angleObj_est = NULL;
 	}
-	//scanf("end");
-
-	//for (int i = 0; i < 3; i++) {
-	//	printf("%d  %d\n", i + 1, peakLoc_azim[i]);
-	//}
 	//scanf("end");
 	free(D);
 	free(sig_sel);
@@ -1617,7 +1615,6 @@ void DOA_beamformingFFT_2D(COMPLEX* sig) {
 	free(pi);
 	free(fr);
 	free(fi);
-
 	fi = NULL;
 	fr = NULL;
 	pi = NULL;
