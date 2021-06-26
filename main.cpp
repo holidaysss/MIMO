@@ -1296,7 +1296,7 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 }
 
 
-void DOA_BF_PeakDet_loc(double * inData) {
+int DOA_BF_PeakDet_loc(double * inData, double *peakVal, int * peakLoc) {
 	double gamma = 1.0471;
 	int sidelobeLevel_dB = 1, maxVal = 0, maxLoc = 0, locateMax = 0, km = 1, numMax = 0,
 		extendLoc = 0, initStage = 1, absMaxValue = 0;
@@ -1304,49 +1304,81 @@ void DOA_BF_PeakDet_loc(double * inData) {
 	double minVal = INF;
 	int i=0, N=256, i_loc, maxLoc_r, bwidth;
 	double currentVal;
-	while (i < (N + extendLoc - 1)) {
-		i++;
-		// i_loc = rem(i-1, N)+1
-		i_loc = (i - 1) % N + 1;  //index, 记得-1！！
-		currentVal = inData[i_loc-1];
-		if (currentVal > absMaxValue) {
-			absMaxValue = currentVal;
-		}
-		if (currentVal > maxVal) {
-			maxVal = currentVal;
-			maxLoc = i_loc;
-			maxLoc_r = i;
-		}
-		if (currentVal < minVal) {
-			minVal = currentVal;
-		}
-		if (locateMax!=0) {
-			if(currentVal < maxVal / gamma)
-				numMax = numMax + 1;
-			bwidth = i - maxLoc_r;
-			//maxData = [maxData(1:numMax - 1, : ); maxLoc maxVal bwidth maxLoc_r]
-			//待写！！
-			minVal = currentVal;
-			locateMax = 0;
-		}
-		else {
-			if (currentVal > minVal * gamma) {
-				locateMax = 1;
+	double(*maxData)[4] = (double(*)[4])malloc(sizeof(double) * 256 * 4);
+	double(*maxData1)[4] = (double(*)[4])malloc(sizeof(double) * 256 * 4);
+	if (maxData != NULL) {
+		while (i < (N + extendLoc - 1)) {
+			i++;
+			// i_loc = rem(i-1, N)+1
+			i_loc = (i - 1) % N + 1;  //index, 记得-1！！
+			currentVal = inData[i_loc - 1];
+			if (currentVal > absMaxValue) {
+				absMaxValue = currentVal;
+			}
+			if (currentVal > maxVal) {
 				maxVal = currentVal;
-				if (initStage == 1)
-					extendLoc = i;
-				initStage = 0;
+				maxLoc = i_loc;
+				maxLoc_r = i;
+			}
+			if (currentVal < minVal) {
+				minVal = currentVal;
+			}
+			if (locateMax != 0) {
+				if (currentVal < maxVal / gamma) {
+					bwidth = i - maxLoc_r;
+					//maxData = [maxData(1:numMax - 1, : ); maxLoc maxVal bwidth maxLoc_r]
+					maxData[numMax][0] = maxLoc;
+					maxData[numMax][1] = maxVal;
+					maxData[numMax][2] = bwidth;
+					maxData[numMax++][3] = maxLoc_r;
+					minVal = currentVal;
+					locateMax = 0;
+				}
+			}
+			else {
+				if (currentVal > minVal * gamma) {
+					locateMax = 1;
+					maxVal = currentVal;
+					if (initStage == 1){
+						extendLoc = i;
+						initStage = 0;
+					}
+				}
 			}
 		}
+		int numMax1 = 0, totPower = 0;
+		for (int i = 0; i < numMax; i++) {
+			if (maxData[i][1] >= absMaxValue * pow(10,double(-sidelobeLevel_dB) / 10)) {
+				for (int j = 0; j < 3; j++) {
+					maxData1[numMax1][j] = maxData[i][j];
+				}
+				numMax1++;
+				totPower = totPower + maxData[i][1];
+			}
+		}
+		//maxData = maxData_
+		for (int i = 0; i < numMax1; i++) {
+			for (int j = 0; j < 4; j++) {
+				maxData[i][j] = maxData1[i][j];
+			}
+		}
+		numMax = numMax1;
+		for (int i = 0; i < numMax; i++) {
+			peakVal[i] = maxData[i][1];
+			peakLoc[i] = int(maxData[i][0] - 1) % N + 1;
+		}
+		//printf("out:%.5lf", peakVal[0]);
+		//scanf("end");
+		free(maxData);
+		free(maxData1);
+		maxData1 = NULL;
+		maxData = NULL;
 	}
-	int numMax_ = 0, totPower = 0;
-	for (int i = 0; i < numMax; i++) {
-
-	}
+	return numMax;
 }
 
 
-void DOA_beamformingFFT_2D(COMPLEX *sig) {
+void DOA_beamformingFFT_2D(COMPLEX* sig) {
 	int angles_DOA_az[2] = { -80, 80 }, angles_DOA_ele[2] = { -20, 20 };
 	double d = 0.5046;
 	int angleFFTSize = 256, apertureLen_azim, apertureLen_elev;
@@ -1363,6 +1395,7 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 	double(*wx_vec) = (double*)malloc(sizeof(double) * angleFFTSize);
 	double(*wz_vec) = (double*)malloc(sizeof(double) * angleFFTSize);
 	double(*spec_azim) = (double*)malloc(sizeof(double) * 256);
+	double(*spec_elev) = (double*)malloc(sizeof(double) * 256);
 
 	for (int i = 0; i < 144; i++) {
 		D[i][1] = 0 + 1;
@@ -1460,7 +1493,12 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 		D_sel = NULL;
 	}
 	//angle_sepc_1D_fft=fftshift(fft(sig_2D,angleFFTSize,1),1)
-	double pr[256], pi[256], fr[256], fi[256];
+	//double pr[256], pi[256], fr[256], fi[256];
+	double(*pr) = (double*)malloc(sizeof(double) * 256);
+	double(*pi) = (double*)malloc(sizeof(double) * 256);
+	double(*fr) = (double*)malloc(sizeof(double) * 256);
+	double(*fi) = (double*)malloc(sizeof(double) * 256);
+
 	for (int j = 0; j < 7; j++) {
 		for (int i = 0; i < 86; i++) {
 			pr[i] = sig_2D[i][j].re;
@@ -1479,29 +1517,24 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 	}
 	fftshift_1(fftOutput, angle_sepc_1D_fft);
 	//angle_sepc_2D_fft=fftshift(fft(angle_sepc_1D_fft,angleFFTSize,2),2); 
-	double pr1[256], pi1[256], fr1[256], fi1[256];
+	//double pr1[256], pi1[256], fr1[256], fi1[256];
 	for (int j = 0; j < 256; j++) {
 		for (int i = 0; i < 7; i++) {
-			pr1[i] = angle_sepc_1D_fft[j][i].re;
-			pi1[i] = angle_sepc_1D_fft[j][i].im;
+			pr[i] = angle_sepc_1D_fft[j][i].re;
+			pi[i] = angle_sepc_1D_fft[j][i].im;
 		}
 		for (int i = 7; i < 256; i++) {  // 补零 7->256
-			pr1[i] = 0;
-			pi1[i] = 0;
+			pr[i] = 0;
+			pi[i] = 0;
 		}
 		//每行进行fft
-		kfft(pr1, pi1, 256, 8, fr1, fi1);
+		kfft(pr, pi, 256, 8, fr, fi);
 		for (int i = 0; i < 256; i++) {  //
-			fftOutput1[j][i].re = fr1[i];
-			fftOutput1[j][i].im = fi1[i];
+			fftOutput1[j][i].re = fr[i];
+			fftOutput1[j][i].im = fi[i];
 		}
 	}
 	fftshift_2_1(fftOutput1, angle_sepc_2D_fft);
-	//for (int i = 0; i < 256; i++) {
-	//	printf("%d  re: %.5lf, im: %.5lf\n", i + 1, angle_sepc_2D_fft[i][2].re, angle_sepc_2D_fft[i][2].im);
-	//}
-	//scanf("end");
-
 	//wx_vec=[-pi:2*pi/angleFFTSize:pi]; wz_vec = [-pi:2 * pi / angleFFTSize : pi];
 	//wx_vec = wx_vec(1:end-1); wz_vec = wz_vec(1:end - 1): 取前256个元素
 	for (int i = 0; i < angleFFTSize; i++) {
@@ -1514,8 +1547,62 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 	}
 	obj_sidelobeLevel_dB = obj_sidelobeLevel_dB_azim;
 	//[peakVal_azim, peakLoc_azim] = DOA_BF_PeakDet_loc(obj, spec_azim);% 水平谱峰搜索
-	
+	double(*peakVal_azim) = (double(*))malloc(sizeof(double) * 256);
+	int(*peakLoc_azim) = (int(*))malloc(sizeof(int) * 256);
+	int len_peakLoc_azim;  /*peakLoc_azim的大小*/
+	len_peakLoc_azim = DOA_BF_PeakDet_loc(spec_azim, peakVal_azim, peakLoc_azim);
+	if (apertureLen_elev == 1) {
+		//待写
+	}
+	else {
+		int obj_cnt = 0, ind;
+		double azim_est, elev_est;
+		int** angleObj_est = (int**)malloc(sizeof(int*) * 4);// 已知第一维
+		for (int i = 0; i < 4; i++) {
+			angleObj_est[i] = (int*)malloc(sizeof(int) * len_peakLoc_azim * 256);
+		}
 
+		//obj.sidelobeLevel_dB = obj.sidelobeLevel_dB_elev;
+		for (int i_obj = 0; i_obj < len_peakLoc_azim; i_obj++) {
+			// spec_elev = abs(angle_sepc_2D_fft(ind,:))
+			ind = int(peakLoc_azim[i_obj]) - 1;  // index-1
+			for (int i = 0; i < 256; i++) {
+				printf("i_obj:%d  i: %d\n", i_obj, i);
+				spec_elev[i] = sqrt(pow(angle_sepc_2D_fft[ind][i].re, 2) + pow(angle_sepc_2D_fft[ind][i].im, 2));
+			}
+			double(*peakVal_elev) = (double(*))malloc(sizeof(double) * 256);
+			int(*peakLoc_elev) = (int(*))malloc(sizeof(int) * 256);
+			int len_peakLoc_azim1 = DOA_BF_PeakDet_loc(spec_elev, peakVal_elev, peakLoc_elev);
+			for (int j_elev = 0; j_elev < len_peakLoc_azim1; j_elev++) {
+				azim_est = asin(wx_vec[ind] / (2 * PI * d));
+				elev_est = asin(wx_vec[peakLoc_elev[j_elev]] / (2 * PI * d));
+				if (azim_est >= angles_DOA_az[0] && azim_est <= angles_DOA_az[1]&&
+					elev_est >= angles_DOA_ele[0] && elev_est <= angles_DOA_ele[1]) {
+					angleObj_est[0][obj_cnt] = azim_est;
+					angleObj_est[1][obj_cnt] = elev_est;
+					angleObj_est[2][obj_cnt] = ind;
+					angleObj_est[3][obj_cnt++] = peakLoc_elev[j_elev];
+				}
+				else {
+					continue;
+				}
+			}
+			free(peakVal_elev);
+			free(peakLoc_elev);
+			peakLoc_elev = NULL;
+			peakVal_elev = NULL;
+		}
+		for (int i = 0; i < 4; i++)
+			free(angleObj_est[i]);
+		free(angleObj_est);
+		angleObj_est = NULL;
+	}
+	//scanf("end");
+
+	//for (int i = 0; i < 3; i++) {
+	//	printf("%d  %d\n", i + 1, peakLoc_azim[i]);
+	//}
+	//scanf("end");
 	free(D);
 	free(sig_sel);
 	free(fftOutput);
@@ -1523,6 +1610,21 @@ void DOA_beamformingFFT_2D(COMPLEX *sig) {
 	free(wx_vec);
 	free(wz_vec);
 	free(spec_azim);
+	free(peakVal_azim);
+	free(peakLoc_azim);
+	free(spec_elev);
+	free(pr);
+	free(pi);
+	free(fr);
+	free(fi);
+
+	fi = NULL;
+	fr = NULL;
+	pi = NULL;
+	pr = NULL;
+	spec_elev = NULL;
+	peakLoc_azim = NULL;
+	peakVal_azim = NULL;
 	spec_azim = NULL;
 	wz_vec = NULL;
 	wx_vec = NULL;
