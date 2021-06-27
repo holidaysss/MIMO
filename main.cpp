@@ -1884,11 +1884,6 @@ int main() {
 	//CFAR检测，检测基于192个通道求和数据，数据经过了多普勒维相干积累和多通道非相干积累
 	detectionResult(*detection_results) = (detectionResult(*))malloc(sizeof(detectionResult) * 143);
 	detection_datapath(detection_results, DopplerFFTOut);
-	//for (int i = 0; i < 143; i++) {
-	//	printf("index:%d %d %.5lf %.5lf\n", i + 1, detection_results[i].dopplerInd, detection_results[i].doppler, detection_results[i].estSNR);
-	//	//printf("i: %d  %.5lf + %.5lf i\n", i+1, detection_results[2].bin_val[i].re, detection_results[2].bin_val[i].im);
-	//}
-	//scanf("end");
 	double(*detect_all_points)[4] = (double(*)[4])malloc(sizeof(double) * 143 * 4);
 	for (int iobj = 0; iobj < 143; iobj++) {
 		detect_all_points[iobj][0] = detection_results[iobj].rangeInd + 1;
@@ -1899,12 +1894,40 @@ int main() {
 	int len_angleEst = 0;  //地址传参
 	detectionResult(*angleEst) = (detectionResult(*))malloc(sizeof(detectionResult) * 512);
 	DOA_path(detection_results, angleEst, &len_angleEst);
+	double(*angles_all_points)[6] = (double(*)[6])malloc(sizeof(double) * len_angleEst * 6);
+	double(*xyz)[9] = (double(*)[9])malloc(sizeof(double) * len_angleEst * 9);
 	if (len_angleEst > 0) {
 		printf("len_angleEst:%d", len_angleEst);
 		for (int iobj = 0; iobj < len_angleEst; iobj++) {
+			angles_all_points[iobj][0] = angleEst[iobj].angles[0];
+			angles_all_points[iobj][1] = angleEst[iobj].angles[1];
+			angles_all_points[iobj][2] = angleEst[iobj].estSNR;
+			angles_all_points[iobj][3] = angleEst[iobj].rangeInd;
+			angles_all_points[iobj][4] = angleEst[iobj].doppler_corr;
+			angles_all_points[iobj][5] = angleEst[iobj].range;
+			xyz[iobj][0] = angles_all_points[iobj][5] * sin(PI * (angles_all_points[iobj][0] * -1) / 180) * cos(PI * (angles_all_points[iobj][1]) / 180);
+			xyz[iobj][1] = angles_all_points[iobj][5] * cos(PI * (angles_all_points[iobj][0] * -1) / 180) * cos(PI * (angles_all_points[iobj][1]) / 180);
+			xyz[iobj][2] = angles_all_points[iobj][5] * sin(PI * (angles_all_points[iobj][1] * -1) / 180);
+			xyz[iobj][3]= angleEst[iobj].doppler_corr;
+			xyz[iobj][4] = angleEst[iobj].range;
+			xyz[iobj][5] = angleEst[iobj].estSNR;
+			xyz[iobj][6] = angleEst[iobj].doppler_corr_overlap;
+			xyz[iobj][7] = angleEst[iobj].doppler_corr_FFT;
+			xyz[iobj][8] = angleEst[iobj].dopplerInd_org;
 
 		}
+		//for (int i = 0; i < 238; i++) {
+		//	printf("index:%d %.5lf %.5lf %.5lf\n", i + 1, xyz[i][6], xyz[i][7], xyz[i][8]);
+		//	//printf("i: %d  %.5lf + %.5lf i\n", i+1, detection_results[2].bin_val[i].re, detection_results[2].bin_val[i].im);
+		//}
+		//scanf("end");
+		double detectionObj_rangeBinSize = 0.1465, rangeFFTObj_rangeFFTSize = 256;
+		double maxRangeShow = detectionObj_rangeBinSize * rangeFFTObj_rangeFFTSize;
+		//静止目标显示 待写
+
 	}
+	/* Space-Time Spectrum */
+	// adcData = reshape(adcData,size(adcData,1), size(adcData,2), size(adcData,3)*size(adcData,4));
 
 	free(detection_results);
 	free(adcData);
@@ -1915,6 +1938,8 @@ int main() {
 	free(sig_integrate_LOG);
 	free(rangeFFTOut_slice);
 	free(DopplerFFTOut_slice);
+	free(angles_all_points);
+	angles_all_points = NULL;
 	detection_results = NULL;
 	adcData = NULL;
 	adcData_slice = NULL;
