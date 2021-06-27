@@ -1298,10 +1298,12 @@ void detection_datapath(detectionResult detection_results[], COMPLEX input[256][
 }
 
 
-int DOA_BF_PeakDet_loc(double* inData, double* peakVal, int* peakLoc) {
+int DOA_BF_PeakDet_loc(double* inData, double* peakVal, int* peakLoc, int obj_sidelobeLevel_dB) {
 	double gamma = 1.0471;
-	int sidelobeLevel_dB = 1, maxVal = 0, maxLoc = 0, locateMax = 0, km = 1, numMax = 0,
-		extendLoc = 0, initStage = 1, absMaxValue = 0;
+	int sidelobeLevel_dB = obj_sidelobeLevel_dB, maxLoc = 0, locateMax = 0, km = 1, numMax = 0,
+		extendLoc = 0, initStage = 1;
+	int numMax1 = 0, totPower = 0;
+	double absMaxValue = 0, maxVal = 0;  //int -> double
 	//inData = inData(:);
 	double minVal = INF;
 	int i = 0, N = 256, i_loc, maxLoc_r, bwidth;
@@ -1348,16 +1350,23 @@ int DOA_BF_PeakDet_loc(double* inData, double* peakVal, int* peakLoc) {
 				}
 			}
 		}
-		int numMax1 = 0, totPower = 0;
+		//for (int i = 0; i < 49; i++) {
+		//	printf("%d  %.5lf\n", i + 1, maxData[i][3]);
+		//}
+		//scanf("end");
+		numMax1 = 0, totPower = 0;
 		for (int i = 0; i < numMax; i++) {
+			//printf("+%d  %.5lf %.5lf\n", i+1, maxData[i][1], absMaxValue * pow(10, double(-sidelobeLevel_dB) / 10));
 			if (maxData[i][1] >= absMaxValue * pow(10, double(-sidelobeLevel_dB) / 10)) {
-				for (int j = 0; j < 3; j++) {
+				for (int j = 0; j < 4; j++) {  //3->4
 					maxData1[numMax1][j] = maxData[i][j];
 				}
 				numMax1++;
 				totPower = totPower + maxData[i][1];
 			}
 		}
+		//printf("%d\n", numMax1);
+		//scanf("end");
 		//maxData = maxData_
 		for (int i = 0; i < numMax1; i++) {
 			for (int j = 0; j < 4; j++) {
@@ -1369,13 +1378,14 @@ int DOA_BF_PeakDet_loc(double* inData, double* peakVal, int* peakLoc) {
 			peakVal[i] = maxData[i][1];
 			peakLoc[i] = int(maxData[i][0] - 1) % N + 1;
 		}
-		//printf("out:%.5lf", peakVal[0]);
-		//scanf("end");
+
 		free(maxData);
 		free(maxData1); //?
 		maxData1 = NULL;
 		maxData = NULL;
 	}
+	//printf("%d\n", numMax1);
+	//scanf("end");
 	return numMax;
 }
 
@@ -1384,7 +1394,7 @@ void DOA_beamformingFFT_2D(COMPLEX* sig, COMPLEX angle_sepc_2D_fft[][256], doubl
 	int angles_DOA_az[2] = { -80, 80 }, angles_DOA_ele[2] = { -20, 20 };
 	double d = 0.5046;
 	int angleFFTSize = 256, apertureLen_azim, apertureLen_elev;
-	int obj_sidelobeLevel_dB_azim = 1, obj_sidelobeLevel_dB;
+	int obj_sidelobeLevel_dB_azim = 1, obj_sidelobeLevel_dB_elev = 0, obj_sidelobeLevel_dB;
 	int(*D)[2] = (int(*)[2])malloc(sizeof(int) * 192 * 2);  //怎么生成D？
 	int D1[192] = { 0,1,2,3,11,12,13,14,46,47,48,49,50,51,52,53,4,5,6,7,15,16,17,18,50,51,52,53,54,55,56,57,8,9,10,11,19,20,21,22,54,55,56,57,58,59,60,61,12,13,14,15,23,24,25,26,58,59,60,61,62,63,64,65,16,17,18,19,27,28,29,30,62,63,64,65,66,67,68,69,20,21,22,23,31,32,33,34,66,67,68,69,70,71,72,73,24,25,26,27,35,36,37,38,70,71,72,73,74,75,76,77,28,29,30,31,39,40,41,42,74,75,76,77,78,79,80,81,32,33,34,35,43,44,45,46,78,79,80,81,82,83,84,85,9,10,11,12,20,21,22,23,55,56,57,58,59,60,61,62,10,11,12,13,21,22,23,24,56,57,58,59,60,61,62,63,11,12,13,14,22,23,24,25,57,58,59,60,61,62,63,64 };
 
@@ -1551,16 +1561,15 @@ void DOA_beamformingFFT_2D(COMPLEX* sig, COMPLEX angle_sepc_2D_fft[][256], doubl
 	double(*peakVal_azim) = (double(*))malloc(sizeof(double) * 256);
 	int(*peakLoc_azim) = (int(*))malloc(sizeof(int) * 256);
 	int len_peakLoc_azim;  /*peakLoc_azim的大小*/
-	len_peakLoc_azim = DOA_BF_PeakDet_loc(spec_azim, peakVal_azim, peakLoc_azim);
+	len_peakLoc_azim = DOA_BF_PeakDet_loc(spec_azim, peakVal_azim, peakLoc_azim, obj_sidelobeLevel_dB);
+	//printf("%d\n", len_peakLoc_azim);
 	if (apertureLen_elev == 1) {
 		//待写
 	}
 	else {
-		int obj_cnt = 0, ind;
+		int obj_cnt = 0, ind, len_peakLoc_azim1;
 		double azim_est, elev_est;
-
-
-		//obj.sidelobeLevel_dB = obj.sidelobeLevel_dB_elev;
+		obj_sidelobeLevel_dB = obj_sidelobeLevel_dB_elev;
 		for (int i_obj = 0; i_obj < len_peakLoc_azim; i_obj++) {
 			// spec_elev = abs(angle_sepc_2D_fft(ind,:))
 			ind = int(peakLoc_azim[i_obj]) - 1;  // index-1
@@ -1569,7 +1578,8 @@ void DOA_beamformingFFT_2D(COMPLEX* sig, COMPLEX angle_sepc_2D_fft[][256], doubl
 			}
 			double(*peakVal_elev) = (double(*))malloc(sizeof(double) * 256);
 			int(*peakLoc_elev) = (int(*))malloc(sizeof(int) * 256);
-			int len_peakLoc_azim1 = DOA_BF_PeakDet_loc(spec_elev, peakVal_elev, peakLoc_elev);
+			len_peakLoc_azim1 = DOA_BF_PeakDet_loc(spec_elev, peakVal_elev, peakLoc_elev, obj_sidelobeLevel_dB);  //Bug
+			//printf("i:%d %d\n", i_obj + 1,len_peakLoc_azim1);
 			for (int j_elev = 0; j_elev < len_peakLoc_azim1; j_elev++) {
 				azim_est = 180 * asin(wx_vec[ind] / (2 * PI * d)) / PI; //弧度转度
 				elev_est = 180 * asin(wx_vec[peakLoc_elev[j_elev] - 1] / (2 * PI * d)) / PI;
@@ -1589,6 +1599,7 @@ void DOA_beamformingFFT_2D(COMPLEX* sig, COMPLEX angle_sepc_2D_fft[][256], doubl
 			peakLoc_elev = NULL;
 			peakVal_elev = NULL;
 		}
+		//scanf("end");
 		*size_2_DOA_angles = obj_cnt;
 		//for (int i = 0; i < 4; i++) {
 		//	printf("%d  %.5lf\n", i + 1, angleObj_est[i][2]);
@@ -1626,7 +1637,7 @@ void DOA_beamformingFFT_2D(COMPLEX* sig, COMPLEX angle_sepc_2D_fft[][256], doubl
 }
 
 
-void DOA_path(detectionResult detected_obj[], detectionResult out[]) {
+void DOA_path(detectionResult detected_obj[], detectionResult out[], int *len_angleEst) {
 	//out = detected_obj;
 	int flag = 1;
 	int numAoAObjCnt = 0, obj_method = 1;
@@ -1645,7 +1656,7 @@ void DOA_path(detectionResult detected_obj[], detectionResult out[]) {
 			angles_1[i] = (double*)malloc(sizeof(double) * 4);
 		}
 	}
-	int size_2_DOA_angles = 0;
+	int size_2_DOA_angles;
 	if (X != NULL && R != NULL) {
 		for (int i_obj = 0; i_obj < 143; i_obj++) {
 			current_obj = detected_obj[i_obj];
@@ -1665,42 +1676,47 @@ void DOA_path(detectionResult detected_obj[], detectionResult out[]) {
 			switch (obj_method)
 			{
 			case 1:
+				size_2_DOA_angles = 0;
 				DOA_beamformingFFT_2D(X, angle_sepc_2D_fft, DOA_angles, &size_2_DOA_angles);
 				if (numAoAObjCnt == 0) {
 					flag = 0; //不用执行 out = detected_obj
-					for (int i = 0; i < size_2_DOA_angles; i++, numAoAObjCnt++) {
-						//out = [], 输出另起炉灶
-						out[numAoAObjCnt].rangeInd = current_obj.rangeInd;
-						out[numAoAObjCnt].dopplerInd = current_obj.dopplerInd;
-						out[numAoAObjCnt].range = current_obj.range;
-						out[numAoAObjCnt].doppler_corr = current_obj.doppler_corr;
-						out[numAoAObjCnt].dopplerInd_org = current_obj.dopplerInd_org;
-						out[numAoAObjCnt].noise_var = current_obj.noise_var;
-						out[numAoAObjCnt].bin_val = current_obj.bin_val;
-						out[numAoAObjCnt].estSNR = current_obj.estSNR;
-						out[numAoAObjCnt].doppler_corr_overlap = current_obj.doppler_corr_overlap;
-						out[numAoAObjCnt].doppler_corr_FFT = current_obj.doppler_corr_FFT;
-						//out[numAoAObjCnt].spectrum = angle_sepc_2D_fft;
-						out[numAoAObjCnt].spectrum = (COMPLEX(*)[256])malloc(sizeof(COMPLEX)*256*256);
+				}
+				for (int i = 0; i < size_2_DOA_angles; i++, numAoAObjCnt++) {
+					//out = [], 输出另起炉灶
+					out[numAoAObjCnt].rangeInd = current_obj.rangeInd;
+					out[numAoAObjCnt].dopplerInd = current_obj.dopplerInd;
+					out[numAoAObjCnt].range = current_obj.range;
+					out[numAoAObjCnt].doppler_corr = current_obj.doppler_corr;
+					out[numAoAObjCnt].dopplerInd_org = current_obj.dopplerInd_org;
+					out[numAoAObjCnt].noise_var = current_obj.noise_var;
+					out[numAoAObjCnt].bin_val = current_obj.bin_val;
+					out[numAoAObjCnt].estSNR = current_obj.estSNR;
+					out[numAoAObjCnt].doppler_corr_overlap = current_obj.doppler_corr_overlap;
+					out[numAoAObjCnt].doppler_corr_FFT = current_obj.doppler_corr_FFT;
+					//out[numAoAObjCnt].spectrum = angle_sepc_2D_fft;
+					//out[numAoAObjCnt].angles = DOA_angles(:, i);
+					out[numAoAObjCnt].angles = (double*)malloc(sizeof(double) * 4);
+					out[numAoAObjCnt].spectrum = (COMPLEX(*)[256])malloc(sizeof(COMPLEX) * 256 * 256);
+					if (out[numAoAObjCnt].angles != NULL && out[numAoAObjCnt].spectrum != NULL) {
 						for (int i = 0; i < 256; i++) {
 							for (int j = 0; j < 256; j++) {
 								out[numAoAObjCnt].spectrum[i][j] = angle_sepc_2D_fft[i][j];
 							}
 						}
-						//out[numAoAObjCnt].angles = DOA_angles(:, i);
-						//out[numAoAObjCnt].angles = angles_1[i];  //指向一个一维数组指针
-						out[numAoAObjCnt].angles = (double*)malloc(sizeof(double) * 4);
 						for (int j = 0; j < 4; j++) {  //赋值
 							out[numAoAObjCnt].angles[j] = DOA_angles[j][i];
 						}
 					}
 				}
+				//printf("i:%d %d %d\n", i_obj + 1, size_2_doa_angles, numaoaobjcnt);
+
 				break;
 			default:
 				break;
 			}
 		}
 	}
+	*len_angleEst = numAoAObjCnt;
 	if (flag == 1) {
 		out = detected_obj;
 	}
@@ -1709,7 +1725,6 @@ void DOA_path(detectionResult detected_obj[], detectionResult out[]) {
 	//	printf("i:%d %.5lf + %.5lfi\n", i + 1, out[1].spectrum[i][0].re, out[1].spectrum[i][0].im);
 	//}
 	//scanf("end");
-
 	free(X);
 	free(R);
 	for (int i = 0; i < 3; i++) {
@@ -1881,8 +1896,15 @@ int main() {
 		detect_all_points[iobj][3] = detection_results[iobj].estSNR;
 	}
 	//is detection_results empty?
-	detectionResult(*angleEst) = (detectionResult(*))malloc(sizeof(detectionResult) * 143);
-	DOA_path(detection_results, angleEst);
+	int len_angleEst = 0;  //地址传参
+	detectionResult(*angleEst) = (detectionResult(*))malloc(sizeof(detectionResult) * 512);
+	DOA_path(detection_results, angleEst, &len_angleEst);
+	if (len_angleEst > 0) {
+		printf("len_angleEst:%d", len_angleEst);
+		for (int iobj = 0; iobj < len_angleEst; iobj++) {
+
+		}
+	}
 
 	free(detection_results);
 	free(adcData);
