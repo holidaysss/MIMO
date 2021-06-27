@@ -1973,9 +1973,25 @@ int main() {
 			}
 		}
 	}
+	double(*range_sel) = (double*)malloc(sizeof(double) * 143);
+	range_sel[0] = detect_all_points[0][0];//初值
+	int m = 1, r_flag;
+	//  range_sel(k) = detect_all_points(k); range_sel = unique(range_sel)
+	for (int i = 0; i < 143; i++) {
+		r_flag = 1;
+		for (int j = 0; j < m; j++) {
+			if (range_sel[j] == detect_all_points[i][0]) {  //重复值
+				r_flag = 0;
+				break;
+			}
+		}
+		if (r_flag == 1) {  //新值
+			range_sel[m++] = detect_all_points[i][0];
+		}
+	}
 
-	for (int i = 0; i < 256; i++) {
-		printf("%d %.4f + %.4fi \n", i + 1, rangeFFTOut_final[i][2][5].re, rangeFFTOut_final[i][2][5].im);
+	for (int i = 0; i < m; i++) {
+		printf("%d %f \n", i + 1, range_sel[i]);
 	}
 	scanf("end");
 	free(detection_results);
