@@ -1790,10 +1790,15 @@ int main() {
 		int parameter_file_gen_json;  /*不明函数*/
 	}
 	COMPLEX(*adcData)[64][16][12] = (COMPLEX(*)[64][16][12])malloc(262144 * 12 * sizeof(COMPLEX));  /*输出；256-64-16-12*/
+	COMPLEX(*adcData_1)[64][16*12] = (COMPLEX(*)[64][16*12])malloc(262144 * 12 * sizeof(COMPLEX));  /*输出；256-64-16x12*/
+	COMPLEX(*adcData_2)[64][86] = (COMPLEX(*)[64][86])malloc(256*64*86 * sizeof(COMPLEX));  /*输出；256-64-86*/
+
 	calibration_datapath(&calibrationObj, adcData);
 
 	COMPLEX(*adcData_slice)[64][16] = (COMPLEX(*)[64][16])malloc(262144 * sizeof(COMPLEX));  /*256-64-16*/
 	COMPLEX(*rangeFFTOut)[64][16][12] = (COMPLEX(*)[64][16][12])malloc(262144 * 12 * sizeof(COMPLEX));  /*256-64-16-12*/
+	COMPLEX(*rangeFFTOut_final)[64][86] = (COMPLEX(*)[64][86])malloc(256 * 64 * 86 * sizeof(COMPLEX));  /*256-64-16-12*/
+
 	COMPLEX(*DopplerFFTOut_pre)[64][16][12] = (COMPLEX(*)[64][16][12])malloc(262144 * 12 * sizeof(COMPLEX));  /*256-64-16-12*/
 	COMPLEX(*DopplerFFTOut)[64][16 * 12] = (COMPLEX(*)[64][16 * 12])malloc(262144 * 12 * sizeof(COMPLEX));  /*256-64-16x12*/
 	COMPLEX(*rangeFFTOut_slice)[64][16] = (COMPLEX(*)[64][16])malloc(sizeof(COMPLEX) * 256 * 64 * 16);
@@ -1897,7 +1902,6 @@ int main() {
 	double(*angles_all_points)[6] = (double(*)[6])malloc(sizeof(double) * len_angleEst * 6);
 	double(*xyz)[9] = (double(*)[9])malloc(sizeof(double) * len_angleEst * 9);
 	if (len_angleEst > 0) {
-		printf("len_angleEst:%d", len_angleEst);
 		for (int iobj = 0; iobj < len_angleEst; iobj++) {
 			angles_all_points[iobj][0] = angleEst[iobj].angles[0];
 			angles_all_points[iobj][1] = angleEst[iobj].angles[1];
@@ -1928,7 +1932,52 @@ int main() {
 	}
 	/* Space-Time Spectrum */
 	// adcData = reshape(adcData,size(adcData,1), size(adcData,2), size(adcData,3)*size(adcData,4));
+	for (int i = 0; i < 256; i++) {
+		for (int j = 0; j < 64; j++) {
+			k = 0;
+			for (int p = 0; p < 12; p++) {
+				for (int q = 0; q < 16; q++) {
+					adcData_1[i][j][k] = adcData[i][j][q][p];
+					k++;
+				}
+			}
+		}
+	}
+	// antenna_azimuth = detectionObj.antenna_azimuthonly
+	int antenna_azimuth[86] = { 1,2,3,4,17,18,19,20,33,34,35,5,6,7,8,21,22,23,24,37,38,39,40,53,54,55,56,69,70,71,72,85,86,87,88,101,102,103,104,117,118,119,120,133,134,135,9,10,11,12,13,14,15,16,29,30,31,32,45,46,47,48,61,62,63,64,77,78,79,80,93,94,95,96,109,110,111,112,125,126,127,128,141,142,143,144 };
+	// adcData = adcData(:,:,antenna_azimuth)
+	int count_n = 0;
+	for (int i = 0; i < 86; i++) {
+		for (int j = 0; j < 256; j++) {
+			for (int k = 0; k < 64; k++) {
+				adcData_2[j][k][count_n] = adcData_1[j][k][antenna_azimuth[i] - 1];
+			}
+		}
+		count_n++;
+	}
+	//rangeFFTOut = fft(adcData)
+	double(*pr) = (double*)malloc(sizeof(double) * 256);
+	double(*pi) = (double*)malloc(sizeof(double) * 256);
+	double(*fr) = (double*)malloc(sizeof(double) * 256);
+	double(*fi) = (double*)malloc(sizeof(double) * 256);
+	for (int i = 0; i < 64; i++) {
+		for (int j = 0; j < 86; j++) {
+			for (int k = 0; k < 256; k++) {
+				pr[k] = adcData_2[k][i][j].re;
+				pi[k] = adcData_2[k][i][j].im;
+			}
+			kfft(pr, pi, 256, 8, fr, fi);
+			for (int k = 0; k < 256; k++) {
+				rangeFFTOut_final[k][i][j].re = fr[k];
+				rangeFFTOut_final[k][i][j].im = fi[k];
+			}
+		}
+	}
 
+	for (int i = 0; i < 256; i++) {
+		printf("%d %.4f + %.4fi \n", i + 1, rangeFFTOut_final[i][2][5].re, rangeFFTOut_final[i][2][5].im);
+	}
+	scanf("end");
 	free(detection_results);
 	free(adcData);
 	free(adcData_slice);
