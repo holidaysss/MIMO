@@ -3,12 +3,18 @@
 #include <stdlib.h>
 #include <math.h>
 #include "tool.h"
+#include<iostream>
+#include <fstream> 
+#include<string>
+#include<vector>
+using namespace std;
 
 
-#define PI acos(-1)
-#define ARRAY_SIZE 786432
-#define MAX_LINE 1024
-#define INF 0x3f3f3f3f  //无穷大
+const double PI = acos(-1);
+const int ARRAY_SIZE = 786432;
+const int MAX_LINE = 1024;
+const int INF = 0x3f3f3f3f;
+
 
 typedef struct complex {  /*定义复数结构体*/
 	double re;
@@ -104,7 +110,7 @@ void readBinFile(const char* fileFullPath, int frameIdx, int numSamplePerChirp, 
 	printf("Expected_Num_SamplesPerFrame: %d\n", Expected_Num_SamplesPerFrame);
 	FILE* fidlist = NULL;
 	unsigned short buf;  /*缓冲区*/
-	char dir[] = "E:\\MIMO_Clutter_Space_Time_Distribution\\空时杂波数据\\实测数据_20210330\\STAP_CROSSROAD_20\\";
+	char dir[] = "D:\\MIMO_Clutter_Space_Time_Distribution\\空时杂波数据\\实测数据_20210330\\STAP_CROSSROAD_20\\";
 	char new_dir[200];
 	sprintf_s(new_dir, "%s%s", dir, fileFullPath);
 	puts(new_dir);
@@ -1761,31 +1767,25 @@ int main() {
 		{11,10,9,8,7,6,5,4,3,2,1,0}, 16, 1, 0, 0, 0, "TDA2", {12,13,14,15,0,1,2,3,8,9,10,11,4,5,6,7}, 4, 0, 1,
 		"calibrationCascade", "E:\\MIMO_Clutter_Space_Time_Distribution\\main\\input\\test1_param.m"
 	};
-	//printf("%s!!!!!!!", calibrationObj.dataPlatform);
-	//char pro_path[] = "E:\\MIMO_Clutter_Space_Time_Distribution";
-	char input_path[] = "E:\\MIMO_Clutter_Space_Time_Distribution\\main\\input\\";
-	const char test_list[] = "E:\\MIMO_Clutter_Space_Time_Distribution\\main\\input\\testList.txt";
-	char pathGenParaFile[] = "E:\\MIMO_Clutter_Space_Time_Distribution\\main\\input\\test1_param.m";
-	//char pfile[] = "E:\\MIMO_Clutter_Space_Time_Distribution\\main\\input\\test1_param.m";
-	//char calibrationfilePath[] = "E:\\MIMO_Clutter_Space_Time_Distribution\\main\\input\\calibrateResults_dummy.mat";
+	string input_path = "E:\\MIMO_Clutter_Space_Time_Distribution\\main\\input\\";
+	string test_list = input_path + "testList.txt";
+	string pathGenParaFile;
 	int PARAM_FILE_GEN_ON = 1;
-	FILE* fidlist = NULL;
-	fidlist = fopen(test_list, "r");
-	char dataFolder_test[1000];
-	char dataFolder_calib[1000];
-	char module_param_file[1000];
-	//char pathGenParaFile[1000];
-	char testID[2] = "1";
-	double begin_del = 5, end_del = 10;
-	//工作区
-	while (!feof(fidlist)) {
-		fgets(dataFolder_test, 1000, fidlist);
-		fgets(dataFolder_calib, 1000, fidlist);
-		fgets(module_param_file, 1000, fidlist);
-		printf("%s\n%s\n%s\n", dataFolder_test, dataFolder_calib, module_param_file);
-		sprintf_s(pathGenParaFile, "%s%s%s%s", input_path, "test", testID, "_param.m");
+	fstream f(test_list.c_str());
+	vector<string>words = {"0", "1", "2"};
+	string line;
+	while (getline(f, line)) {
+		printf("line: %s", line);
+		words.push_back(line);
 	}
-	fclose(fidlist);
+	string dataFolder_test, dataFolder_calib, module_param_file;
+	dataFolder_test = words[0];
+	dataFolder_calib = words[1];
+	module_param_file = words[2];
+	for(auto c:words){
+		cout << c << endl;
+	}
+
 	if (PARAM_FILE_GEN_ON == 1) {
 		int parameter_file_gen_json;  /*不明函数*/
 	}
@@ -1886,7 +1886,9 @@ int main() {
 	writetxt_2d(sig_integrate, 241, "result/sig_integrate.txt");
 	writetxt_2d(sig_integrate_LOG, 241, "result/sig_integrate_LOG.txt");
 
+	/* Range-Angle 图像 */
 	//CFAR检测，检测基于192个通道求和数据，数据经过了多普勒维相干积累和多通道非相干积累
+
 	detectionResult(*detection_results) = (detectionResult(*))malloc(sizeof(detectionResult) * 143);
 	detection_datapath(detection_results, DopplerFFTOut);
 	double(*detect_all_points)[4] = (double(*)[4])malloc(sizeof(double) * 143 * 4);
@@ -1930,7 +1932,10 @@ int main() {
 		//静止目标显示 待写
 
 	}
+
 	/* Space-Time Spectrum */
+	//不同距离单元的空时谱，根据检测结果观察
+
 	// adcData = reshape(adcData,size(adcData,1), size(adcData,2), size(adcData,3)*size(adcData,4));
 	for (int i = 0; i < 256; i++) {
 		for (int j = 0; j < 64; j++) {
@@ -1974,7 +1979,9 @@ int main() {
 		}
 	}
 	double(*range_sel) = (double*)malloc(sizeof(double) * 143);
-	range_sel[0] = detect_all_points[0][0];//初值
+	if (range_sel != NULL) {
+		range_sel[0] = detect_all_points[0][0];//初值
+	}
 	int m = 1, r_flag;
 	//  range_sel(k) = detect_all_points(k); range_sel = unique(range_sel)
 	for (int i = 0; i < 143; i++) {
@@ -1989,11 +1996,21 @@ int main() {
 			range_sel[m++] = detect_all_points[i][0];
 		}
 	}
+	int i_range = 50, num_chirps = 256, num_DOA = 256;;
+	//STAP_Data = rangeFFTOut(i_range,:,:); STAP_Data = squeeze(STAP_Data)
+	COMPLEX(*STAP_Data)[86] = (COMPLEX(*)[86])malloc(64 * 86 * sizeof(COMPLEX));  /*64-86*/
+	for (int i = 0; i < 64; i++) {
+		for (int j = 0; j < 86; j++) {
+			STAP_Data[i][j] = rangeFFTOut_final[i_range-1][i][j];
+		}
+	}
 
-	for (int i = 0; i < m; i++) {
-		printf("%d %f \n", i + 1, range_sel[i]);
+	for (int i = 0; i < 64; i++) {
+		printf("%.5lf + %.5lfi \n", STAP_Data[i][0].re, STAP_Data[i][0].im);
 	}
 	scanf("end");
+	//绘图：Space-Time Spectrum
+
 	free(detection_results);
 	free(adcData);
 	free(adcData_slice);
